@@ -1,0 +1,550 @@
+@import "tailwindcss";
+
+/* ============================================================ design tokens
+   Palette, type scale and rhythm lifted from the reference build. Small radii
+   (3px) are a defining trait: no pill shapes anywhere in content. */
+
+:root {
+  /* surface */
+  --paper: #fcfaf7;
+  --paper-bright: #fffdf9;
+  --panel: #f6f2ec;
+
+  /* type */
+  --ink: #111210;
+  --muted: #595a54;
+  --faint: #90918a;
+
+  /* structure */
+  --line: #e2ded7;
+  --line-dark: #c8c3bb;
+
+  /* accent */
+  --orange: #ff4f14;
+  --orange-soft: #fff1ea;
+  --green: #43a447;
+  --red: #d2401e;
+
+  /* diagram washes */
+  --wash-orange: #ffbd88;
+  --wash-pink: #f3a5d1;
+  --wash-violet: #8869ef;
+  --wash-blue: #82a7f7;
+  --wash-lime: #d8ed91;
+
+  /* controls */
+  --btn-dark: #151614;
+  --radius: 3px;
+  --radius-lg: 6px;
+
+  /* fonts — the two families are loaded by next/font in app/layout.tsx, which
+     hashes the family name, so the variables it emits come first here. */
+  --font: var(--font-manrope), "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: var(--font-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* layout */
+  --shell: 1200px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --header-h: 78px;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-bright: var(--paper-bright);
+  --color-panel: var(--panel);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-dark: var(--line-dark);
+  --color-orange: var(--orange);
+  --color-orange-soft: var(--orange-soft);
+  --color-green: var(--green);
+  --color-red: var(--red);
+  --color-btn-dark: var(--btn-dark);
+  --font-sans: var(--font);
+  --font-mono: var(--mono);
+  --radius-sharp: var(--radius);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--header-h) + 16px);
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 8% 5%, rgba(255, 255, 255, 0.72), transparent 24%),
+    var(--paper);
+  font-family: var(--font);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  border: 0;
+  font: inherit;
+  color: inherit;
+}
+
+::selection {
+  background: var(--orange);
+  color: #fff;
+}
+
+/* ================================================================ primitives */
+
+.shell {
+  width: min(var(--shell), calc(100% - 48px));
+  margin-inline: auto;
+}
+
+@media (max-width: 640px) {
+  .shell {
+    width: calc(100% - 32px);
+  }
+}
+
+/* Mono micro-type: 12px, uppercase, wide tracking. */
+.mono-label {
+  font-family: var(--mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--faint);
+}
+
+.h1 {
+  font-size: clamp(38px, 6.4vw, 64px);
+  font-weight: 500;
+  line-height: 1.02;
+  letter-spacing: -0.022em;
+  margin: 0;
+}
+
+.h2 {
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.018em;
+  margin: 0;
+}
+
+.h3 {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.lede {
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0;
+}
+
+.accent {
+  color: var(--orange);
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease;
+  white-space: nowrap;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+.btn-dark {
+  background: var(--btn-dark);
+  color: #fff;
+}
+
+.btn-dark:hover {
+  background: #2b2d29;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-dark);
+}
+
+.btn-ghost:hover {
+  border-color: var(--ink);
+  background: var(--paper-bright);
+}
+
+.btn-quiet {
+  background: transparent;
+  color: var(--ink);
+  padding: 0 4px;
+}
+
+.btn-quiet:hover {
+  color: var(--orange);
+}
+
+.btn[disabled],
+.btn[aria-disabled="true"] {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ----------------------------------------------------------------- panels */
+
+.panel {
+  background: var(--paper-bright);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.rule {
+  height: 1px;
+  background: var(--line);
+  border: 0;
+  margin: 0;
+}
+
+/* ================================================== scroll reveal (spec 16)
+   One IntersectionObserver adds `.in`; every transition lives here in CSS and
+   touches only transform and opacity. Plays once. */
+
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+[data-reveal].in {
+  opacity: 1;
+  transform: none;
+}
+
+/* Large panels additionally settle in scale. */
+[data-reveal="panel"] {
+  transform: translateY(14px) scale(0.985);
+}
+
+[data-reveal="panel"].in {
+  transform: none;
+}
+
+/* Bars grow from the left edge. */
+[data-reveal="bar"] {
+  opacity: 1;
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+[data-reveal="bar"].in {
+  transform: scaleX(1);
+}
+
+/* SVG strokes draw themselves in. */
+[data-reveal="stroke"] {
+  opacity: 1;
+  transform: none;
+  stroke-dasharray: var(--dash, 1000);
+  stroke-dashoffset: var(--dash, 1000);
+  transition: stroke-dashoffset 1.1s cubic-bezier(0.16, 1, 0.3, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+
+[data-reveal="stroke"].in {
+  stroke-dashoffset: 0;
+}
+
+/* Reduced motion: show the end state, animate nothing. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  [data-reveal],
+  [data-reveal="panel"],
+  [data-reveal="bar"],
+  [data-reveal="stroke"] {
+    opacity: 1 !important;
+    transform: none !important;
+    stroke-dashoffset: 0 !important;
+    transition: none !important;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ================================================================ skeletons */
+
+.skeleton {
+  background: linear-gradient(90deg, var(--panel) 25%, #efeae2 37%, var(--panel) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-slide 1.4s ease infinite;
+  border-radius: var(--radius);
+}
+
+@keyframes skeleton-slide {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* =================================================================== forms */
+
+.field {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  background: var(--paper-bright);
+  border: 1px solid var(--line-dark);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  transition: border-color 0.16s ease;
+}
+
+.field::placeholder {
+  color: var(--faint);
+}
+
+.field:focus {
+  outline: none;
+  border-color: var(--ink);
+}
+
+.field.invalid {
+  border-color: var(--red);
+}
+
+.field-mono {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+/* ================================================================== tables */
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================== landing page
+   Three surfaces the homepage needs that no other page does. They live here,
+   not in the components, because every colour has to resolve to a token and
+   because the reference paints these effects on a canvas: a handful of very
+   low-opacity radial stops read the same at rest and cost no JavaScript. */
+
+/* Soft multi-colour field behind the announce banner and the closing CTA. */
+.wash {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* The field is painted in ::before at z-index 0, so content needs a layer. */
+.wash > * {
+  position: relative;
+  z-index: 1;
+}
+
+.wash::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(58% 150% at 86% 112%, color-mix(in srgb, var(--wash-orange) 66%, transparent), transparent 64%),
+    radial-gradient(46% 132% at 72% -24%, color-mix(in srgb, var(--wash-pink) 48%, transparent), transparent 62%),
+    radial-gradient(52% 158% at 102% 44%, color-mix(in srgb, var(--wash-violet) 32%, transparent), transparent 60%),
+    radial-gradient(44% 140% at 58% 92%, color-mix(in srgb, var(--wash-lime) 44%, transparent), transparent 64%),
+    radial-gradient(40% 124% at 46% 4%, color-mix(in srgb, var(--wash-blue) 28%, transparent), transparent 58%);
+  /* Black here is alpha, not colour. The field is held back over the copy and
+     runs at full strength across the empty right-hand side. */
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.14) 0%,
+    rgba(0, 0, 0, 0.22) 30%,
+    rgba(0, 0, 0, 0.58) 58%,
+    rgba(0, 0, 0, 1) 86%
+  );
+  mask-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.14) 0%,
+    rgba(0, 0, 0, 0.22) 30%,
+    rgba(0, 0, 0, 0.58) 58%,
+    rgba(0, 0, 0, 1) 86%
+  );
+}
+
+/* Dashboard surfaces take the same field at a lower ceiling. That page is
+   numbers and controls rather than headlines, so the wash is capped well below
+   the strength the landing uses and never rises to where a hairline border or a
+   mono label stops reading against it. Same paint, quieter volume — not a
+   second treatment. */
+.wash-quiet::before {
+  -webkit-mask-image: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0.04) 0%,
+    rgba(0, 0, 0, 0.08) 32%,
+    rgba(0, 0, 0, 0.2) 64%,
+    rgba(0, 0, 0, 0.36) 100%
+  );
+  mask-image: linear-gradient(
+    100deg,
+    rgba(0, 0, 0, 0.04) 0%,
+    rgba(0, 0, 0, 0.08) 32%,
+    rgba(0, 0, 0, 0.2) 64%,
+    rgba(0, 0, 0, 0.36) 100%
+  );
+}
+
+/* The closing CTA stacks its copy on small screens, so the mask has to clear
+   the middle of the box as well as its left edge. */
+.wash-cta::before {
+  -webkit-mask-image: radial-gradient(
+    120% 120% at 100% 50%,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.5) 42%,
+    rgba(0, 0, 0, 0.12) 72%,
+    rgba(0, 0, 0, 0.06) 100%
+  );
+  mask-image: radial-gradient(
+    120% 120% at 100% 50%,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.5) 42%,
+    rgba(0, 0, 0, 0.12) 72%,
+    rgba(0, 0, 0, 0.06) 100%
+  );
+}
+
+/* -------------------------------------------------- capability cards (4.3)
+   Two tinted corners plus a drafting grid, exactly the reference's card, with
+   the per-card colour pair selected by position so the markup carries no
+   presentation classes of its own. */
+
+.cap-card {
+  --cap-a: color-mix(in srgb, var(--wash-orange) 44%, transparent);
+  --cap-b: color-mix(in srgb, var(--wash-violet) 20%, transparent);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--line-dark);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 88% 20%, var(--cap-a), transparent 46%),
+    radial-gradient(circle at 96% 94%, var(--cap-b), transparent 52%),
+    linear-gradient(180deg, var(--paper-bright) 0%, color-mix(in srgb, var(--panel) 55%, var(--paper-bright)) 100%);
+}
+
+.cap-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.34;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--ink) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 7%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  /* Cleared off the top-left so the grid never runs under the heading. */
+  -webkit-mask-image: linear-gradient(130deg, transparent 0 42%, #000 78%, transparent 100%);
+  mask-image: linear-gradient(130deg, transparent 0 42%, #000 78%, transparent 100%);
+}
+
+.cap-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.cap-card:nth-child(2) {
+  --cap-a: color-mix(in srgb, var(--wash-pink) 38%, transparent);
+  --cap-b: color-mix(in srgb, var(--wash-blue) 26%, transparent);
+}
+
+.cap-card:nth-child(3) {
+  --cap-a: color-mix(in srgb, var(--wash-lime) 52%, transparent);
+  --cap-b: color-mix(in srgb, var(--wash-orange) 24%, transparent);
+}
+
+.cap-card:nth-child(4) {
+  --cap-a: color-mix(in srgb, var(--wash-blue) 36%, transparent);
+  --cap-b: color-mix(in srgb, var(--wash-pink) 22%, transparent);
+}
+
+.cap-card:nth-child(5) {
+  --cap-a: color-mix(in srgb, var(--wash-violet) 28%, transparent);
+  --cap-b: color-mix(in srgb, var(--wash-lime) 34%, transparent);
+}
+
+.cap-card:nth-child(6) {
+  --cap-a: color-mix(in srgb, var(--wash-orange) 40%, transparent);
+  --cap-b: color-mix(in srgb, var(--wash-blue) 24%, transparent);
+}

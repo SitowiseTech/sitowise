@@ -27,9 +27,10 @@ distributor wallet sends real ETH into the contract with every credit. Every rou
 with `mode = 'treasury'` in the database and exposed through `/api/distributions`.
 
 The site plans a Uniswap v4 hook so that accrual eventually comes from real swap volume, and the
-docs describe that design. **There is no hook contract in this repository today.** It was removed
-when the architecture moved to on-chain balances, and it has to be written, deployed and attached
-to pools before `DIST_MODE=swaps` means anything. Until then the docs say the hook is not
+docs describe that design. `SitowiseHook` is written and tested in `contracts/src`, with a mined
+salt in `contracts/HOOK.md`, but **it is not deployed and no pool names it.** A v4 pool fixes its
+hook at `initialize` and can never change it, so the hook cannot be attached to pools that already
+exist. Until such a pool is created and trades, `DIST_MODE=swaps` has no source of accrual. Until then the docs say the hook is not
 deployed, and nothing claims it is producing revenue.
 
 Nothing in this project states a rate, an interval, a payback period or an APR, because none of
@@ -165,7 +166,7 @@ forge install OpenZeppelin/openzeppelin-contracts --no-git
 forge test
 ```
 
-112 tests: unit, fuzz, reentrancy and the solvency invariant.
+125 tests: unit, fuzz, reentrancy and the solvency invariant, plus 13 for the hook.
 
 ## Deploying the contract
 
@@ -209,8 +210,8 @@ off the server entirely, and keep only a few days of payout runway on the distri
 
 ## What is NOT done yet
 
-- **The Uniswap v4 hook does not exist in this repo.** `DIST_MODE=swaps` has no source of
-  accrual until it is written, deployed and pools are initialised naming it.
+- **The Uniswap v4 hook is not deployed.** The contract and its tests are in the repo, but no
+  pool names it, so `DIST_MODE=swaps` has no source of accrual until one is initialised and trades.
 - **The contract is not audited.** `/docs/audits` says so.
 - Nodes are permanently non-transferable, and a wallet's 25 slots are consumed for good.
 - ETH sent to the factory address by mistake lands in `freeBalance` with no automatic refund;

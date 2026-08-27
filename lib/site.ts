@@ -9,6 +9,9 @@ export const SITE = {
     "Deploy a node on Robinhood Chain for 0.02 ETH. Every wei credited to a node is a wei held in the contract, readable on chain and withdrawable to any address. During the launch period rewards are funded by Sitowise.",
   x: process.env.NEXT_PUBLIC_X_URL ?? "https://x.com/SitowiseTech",
   xHandle: "@SitowiseTech",
+  /** The app and the contracts are public; the header and footer link to them. */
+  github: process.env.NEXT_PUBLIC_GITHUB_URL ?? "https://github.com/SitowiseTech/sitowise",
+  githubHandle: "SitowiseTech/sitowise",
 } as const;
 
 export type NavLink = {href: string; label: string};

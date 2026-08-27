@@ -3,7 +3,7 @@
 import Link from "next/link";
 import {usePathname} from "next/navigation";
 import {useCallback, useEffect, useId, useRef, useState} from "react";
-import {MenuIcon, XIcon} from "@/components/icons";
+import {GitHubIcon, MenuIcon, XIcon} from "@/components/icons";
 import {CaPill} from "@/components/site/CaPill";
 import {Wordmark} from "@/components/site/Wordmark";
 import {Button} from "@/components/ui/Button";
@@ -92,6 +92,17 @@ export function Header() {
           >
             <XIcon size={22} />
           </a>
+          <a
+            href={SITE.github}
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label={`${SITE.name} on GitHub`}
+            className="flex size-9 items-center justify-center rounded-sharp text-ink transition-colors hover:bg-panel hover:text-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange"
+          >
+            {/* Two down on the X. The mark is a filled disc against the X's
+                thin diagonals, so matching the box would outweigh it. */}
+            <GitHubIcon size={20} />
+          </a>
           <Button href={DEPLOY_HREF} size="sm" className="min-w-[142px] justify-center">
             {DEPLOY_LABEL}
           </Button>
@@ -137,6 +148,16 @@ export function Header() {
               >
                 <XIcon size={18} />
                 {SITE.xHandle}
+              </a>
+              <a
+                href={SITE.github}
+                target="_blank"
+                rel="noreferrer noopener"
+                onClick={close}
+                className="inline-flex items-center gap-2 font-mono text-[13px] text-ink transition-colors hover:text-orange"
+              >
+                <GitHubIcon size={18} />
+                GitHub
               </a>
               <Button
                 href={DEPLOY_HREF}

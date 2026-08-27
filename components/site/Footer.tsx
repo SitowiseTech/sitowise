@@ -1,5 +1,5 @@
 import Link from "next/link";
-import {XIcon} from "@/components/icons";
+import {GitHubIcon, XIcon} from "@/components/icons";
 import {Wordmark} from "@/components/site/Wordmark";
 import {CHAIN_ID} from "@/lib/chain";
 import {FOOTER_LINKS, FUNDING_NOTE, SITE} from "@/lib/site";
@@ -37,15 +37,29 @@ export function Footer() {
             ))}
           </nav>
 
-          <a
-            href={SITE.x}
-            target="_blank"
-            rel="noreferrer noopener"
-            aria-label={`${SITE.name} on X`}
-            className="order-2 flex size-9 items-center justify-center rounded-sharp text-ink transition-colors hover:bg-panel hover:text-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange sm:order-3"
-          >
-            <XIcon size={26} />
-          </a>
+          {/* Both marks travel together when the rows reflow, so the pair is
+              ordered as one unit rather than each icon separately. */}
+          <div className="order-2 flex items-center gap-1 sm:order-3">
+            <a
+              href={SITE.x}
+              target="_blank"
+              rel="noreferrer noopener"
+              aria-label={`${SITE.name} on X`}
+              className="flex size-9 items-center justify-center rounded-sharp text-ink transition-colors hover:bg-panel hover:text-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange"
+            >
+              <XIcon size={26} />
+            </a>
+            <a
+              href={SITE.github}
+              target="_blank"
+              rel="noreferrer noopener"
+              aria-label={`${SITE.name} on GitHub`}
+              className="flex size-9 items-center justify-center rounded-sharp text-ink transition-colors hover:bg-panel hover:text-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange"
+            >
+              {/* Two down on the X, for the optical weight reason in Header. */}
+              <GitHubIcon size={24} />
+            </a>
+          </div>
         </div>
 
         <hr className="rule" />

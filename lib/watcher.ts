@@ -1114,3 +1114,36 @@ export async function adoptPayment(txHash: `0x${string}`): Promise<AdoptResult> 
     status: verdict.sighting.status,
   };
 }
+
+/**
+ * Read one payment straight from the chain, without recording anything.
+ *
+ * Used by the refund path: marking a payment refunded must write the real
+ * sender, amount and block, and those come from the chain rather than from
+ * whoever typed the hash.
+ */
+export type PaymentFacts =
+  | {ok: true; from: `0x${string}`; amountWei: bigint; blockNumber: bigint; toPayments: boolean}
+  | {ok: false; reason: string};
+
+export async function readPaymentFacts(txHash: `0x${string}`): Promise<PaymentFacts> {
+  const payTo = paymentAddress();
+  const [transaction, receipt] = await Promise.all([
+    transactionFor(txHash),
+    receiptFor(txHash),
+  ]);
+
+  if (!transaction) return {ok: false, reason: "The chain does not know that transaction."};
+  if (transaction.blockNumber === null || !receipt) {
+    return {ok: false, reason: "That transaction is still pending."};
+  }
+  if (receipt.status !== "success") return {ok: false, reason: "That transaction reverted."};
+
+  return {
+    ok: true,
+    from: transaction.from.toLowerCase() as `0x${string}`,
+    amountWei: transaction.value,
+    blockNumber: transaction.blockNumber,
+    toPayments: (transaction.to?.toLowerCase() ?? null) === payTo,
+  };
+}

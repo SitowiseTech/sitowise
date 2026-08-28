@@ -12,12 +12,19 @@
  * level as well as on chain (the contract's `paymentRefUsed` refuses a repeat).
  */
 
-import {sql, type SqlQuery} from "@/lib/db";
+import {sql, tx, type SqlQuery} from "@/lib/db";
 
 /** Give up after this many failed mint attempts and raise it for a human. */
 export const MAX_MINT_ATTEMPTS = 10;
 
-export type PaymentStatus = "seen" | "minting" | "minted" | "failed" | "manual_review";
+export type PaymentStatus =
+  | "seen"
+  | "minting"
+  | "minted"
+  | "failed"
+  | "manual_review"
+  /** Received and paid back. Terminal: no pass may ever turn one into a node. */
+  | "refunded";
 
 export type PaymentRow = {
   id: string;
@@ -150,6 +157,7 @@ export async function paymentCounts(): Promise<Record<PaymentStatus, number>> {
     minted: 0,
     failed: 0,
     manual_review: 0,
+    refunded: 0,
   };
   for (const r of rows) out[r.status] = Number(r.n);
   return out;
@@ -256,6 +264,91 @@ export async function requeuePayment(txHash: string): Promise<PaymentRow | null>
      where lower(tx_hash) = ${txHash.toLowerCase()}
        and status in ('manual_review', 'failed')
     returning *
+  `;
+  return rows[0] ?? null;
+}
+
+/** Every payment from one wallet, any status. A diagnostic, not a pipeline step. */
+export async function readPaymentsFrom(address: string): Promise<PaymentRow[]> {
+  return sql<PaymentRow>`
+    select * from payments
+     where lower(from_address) = ${address.toLowerCase()}
+     order by block_number asc, id asc
+  `;
+}
+
+/**
+ * Make the status constraint accept 'refunded'.
+ *
+ * There is no migration runner in this project, so migration 009 is applied
+ * here on first use. Both statements are idempotent, which is what makes that
+ * safe to call on every refund rather than tracking whether it has run.
+ */
+async function ensureRefundedStatus(q: SqlQuery): Promise<void> {
+  await q`alter table payments drop constraint if exists payments_status_check`;
+  await q`
+    alter table payments add constraint payments_status_check
+      check (status in ('seen','minting','minted','failed','manual_review','refunded'))
+  `;
+}
+
+/**
+ * Record that a payment was received and the money given back.
+ *
+ * Writes the row when discovery never recorded it, which is the case that
+ * matters: a payment missing from the ledger is one a future backfill could
+ * still find and mint. Inserting it as `refunded` inoculates the hash, because
+ * `recordSeen` does nothing on a conflicting `tx_hash`.
+ *
+ * Refuses to touch a payment that already produced a node. Money may well have
+ * been returned for one, but that is a different fact and overwriting the mint
+ * record would destroy the link between a live node and the payment behind it.
+ */
+export async function markRefunded(args: {
+  txHash: string;
+  from: string;
+  amountWei: bigint;
+  blockNumber: bigint;
+  note: string;
+}): Promise<{status: "inserted" | "updated" | "already-minted"}> {
+  return tx(async (q) => {
+    await ensureRefundedStatus(q);
+
+    const existing = await q<{status: PaymentStatus}>`
+      select status from payments where lower(tx_hash) = ${args.txHash.toLowerCase()}
+    `;
+
+    if (existing[0]?.status === "minted") return {status: "already-minted" as const};
+
+    if (existing.length > 0) {
+      await q`
+        update payments
+           set status = 'refunded', last_error = ${args.note}, updated_at = now()
+         where lower(tx_hash) = ${args.txHash.toLowerCase()}
+      `;
+      return {status: "updated" as const};
+    }
+
+    await q`
+      insert into payments (tx_hash, from_address, amount_wei, block_number, status, last_error)
+      values (
+        ${args.txHash.toLowerCase()},
+        ${args.from.toLowerCase()},
+        ${args.amountWei.toString()},
+        ${args.blockNumber.toString()},
+        'refunded',
+        ${args.note}
+      )
+      on conflict (tx_hash) do nothing
+    `;
+    return {status: "inserted" as const};
+  });
+}
+
+/** One payment by hash, whatever its status. */
+export async function readPaymentByHash(txHash: string): Promise<PaymentRow | null> {
+  const rows = await sql<PaymentRow>`
+    select * from payments where lower(tx_hash) = ${txHash.toLowerCase()}
   `;
   return rows[0] ?? null;
 }

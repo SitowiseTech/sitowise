@@ -21,8 +21,14 @@ import {
   requireAdmin,
   toResponse,
 } from "@/lib/api";
-import {readParkedPayments, requeuePayment} from "@/lib/payments";
-import {adoptPayment} from "@/lib/watcher";
+import {
+  markRefunded,
+  readPaymentByHash,
+  readPaymentsFrom,
+  readParkedPayments,
+  requeuePayment,
+} from "@/lib/payments";
+import {adoptPayment, readPaymentFacts} from "@/lib/watcher";
 
 export async function GET(req: Request): Promise<Response> {
   const limit = checkLimit(req, "admin-payments", {limit: 30});
@@ -30,7 +36,11 @@ export async function GET(req: Request): Promise<Response> {
 
   try {
     requireAdmin(req);
-    const rows = await readParkedPayments();
+    // ?from=0x… shows every row for one wallet whatever its status, which is
+    // what you need when the question is "why does this buyer not have a node"
+    // and the answer might be that the payment was never recorded at all.
+    const from = new URL(req.url).searchParams.get("from");
+    const rows = from ? await readPaymentsFrom(from) : await readParkedPayments();
     return jsonOk(
       {
         payments: rows.map((row) => ({
@@ -63,6 +73,49 @@ export async function POST(req: Request): Promise<Response> {
       return jsonError("Pass the payment transaction hash.", 400, limit.headers);
     }
 
+    // action: "refund" records money that was received and paid back. It is
+    // terminal, and it writes the row even when discovery never saw the
+    // payment, which is exactly the case that could otherwise be backfilled
+    // into a free node later.
+    if (body.action === "refund") {
+      const note = typeof body.note === "string" && body.note.trim() !== ""
+        ? body.note.trim().slice(0, 400)
+        : "refunded off chain";
+
+      const facts = await readPaymentFacts(txHash as `0x${string}`);
+      if (!facts.ok) return jsonError(facts.reason, 400, limit.headers);
+      if (!facts.toPayments) {
+        return jsonError("That transaction was not sent to the payments wallet.", 400, limit.headers);
+      }
+
+      const result = await markRefunded({
+        txHash,
+        from: facts.from,
+        amountWei: facts.amountWei,
+        blockNumber: facts.blockNumber,
+        note,
+      });
+
+      if (result.status === "already-minted") {
+        return jsonError(
+          "That payment already produced a node, so it cannot be marked refunded.",
+          409,
+          limit.headers,
+        );
+      }
+
+      return jsonOk(
+        {
+          txHash,
+          from: facts.from,
+          amountWei: facts.amountWei.toString(),
+          status: "refunded",
+          recorded: result.status,
+        },
+        mergeHeaders(limit.headers, PRIVATE_CACHE),
+      );
+    }
+
     const row = await requeuePayment(txHash);
     if (!row) {
       // Not parked. Either it is already minted, or discovery never recorded it
@@ -70,6 +123,19 @@ export async function POST(req: Request): Promise<Response> {
       // behind. Adoption re-reads the transaction from the chain and records it
       // if it really is a payment, so the second case is recoverable here
       // instead of needing a day of cursor rewound.
+      // A row that exists but is not requeueable is terminal: minted, or
+      // refunded. Adoption would insert nothing (the hash is unique) and then
+      // report the verdict it computed, which reads as success and is a lie.
+      // Refuse here and say what the payment actually is.
+      const existing = await readPaymentByHash(txHash);
+      if (existing) {
+        return jsonError(
+          `That payment is already recorded as ${existing.status} and will not be requeued.`,
+          409,
+          limit.headers,
+        );
+      }
+
       const adopted = await adoptPayment(txHash as `0x${string}`);
       if (adopted.ok) {
         return jsonOk(

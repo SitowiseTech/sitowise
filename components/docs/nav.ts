@@ -189,6 +189,11 @@ export const DOC_NAV: readonly DocGroup[] = [
         blurb: "Recent distribution rounds, newest first.",
       },
       {
+        href: "/docs/api/cover",
+        label: "GET /api/cover",
+        blurb: "Whether node balances are backed, read from the chain.",
+      },
+      {
         href: "/docs/api/errors",
         label: "Errors",
         blurb: "Status codes, the error envelope, and how to retry.",

@@ -3,6 +3,7 @@
 import {useCallback, useMemo, useState} from "react";
 import {AccountBar} from "@/components/dashboard/AccountBar";
 import {ActivityFeed} from "@/components/dashboard/ActivityFeed";
+import {CoverPanel} from "@/components/dashboard/CoverPanel";
 import {ConnectScreen, LoadingScreen, SignScreen} from "@/components/dashboard/GateScreens";
 import {DeployModal} from "@/components/dashboard/DeployModal";
 import {ErrorPanel} from "@/components/dashboard/ErrorPanel";
@@ -173,6 +174,11 @@ function SignedIn({address}: {address: `0x${string}`}) {
       />
 
       <ActivityFeed items={data.feed} loading={data.detailsLoading} ethUsd={data.ethUsd} />
+
+      {/* Last, deliberately. It is the answer to a question the page raises
+          rather than one it opens with: everything above says what you are
+          owed, and this says whether it is actually there. */}
+      <CoverPanel ethUsd={data.ethUsd} />
 
       <WithdrawModal
         open={withdraw !== null && withdraw.targets.length > 0}

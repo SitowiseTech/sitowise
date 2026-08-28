@@ -151,3 +151,53 @@ export async function readBalance(address: `0x${string}`): Promise<ChainRead<big
     return failure(err);
   }
 }
+
+/* --------------------------------------------------------------------- cover
+   The holder-facing subset of the snapshot above.
+
+   `readFactory` answers thirteen reads because /admin needs all of them. This
+   page is public and every dashboard visitor hits it, so it asks the four
+   questions a holder actually has and no more: is the money that is owed to
+   everyone actually sitting in the contract, and can I still take mine out. */
+
+export type Cover = {
+  address: `0x${string}`;
+  /** ETH the contract holds right now, read from the node. */
+  balanceWei: bigint;
+  /** Sum of every live node balance: what the contract owes all holders. */
+  outstandingWei: bigint;
+  /** balance >= outstanding, as the contract itself reports it. */
+  isSolvent: boolean;
+  /**
+   * Pausing blocks new mints. It has never been able to block a withdrawal, so
+   * it is shown next to the cover rather than as a warning about your money.
+   */
+  paused: boolean;
+};
+
+export async function readCover(): Promise<ChainRead<Cover>> {
+  let address: `0x${string}`;
+  try {
+    address = factoryAddress();
+  } catch (err) {
+    return failure(err);
+  }
+
+  const client = publicClient();
+  const contract = {address, abi: FACTORY_ABI} as const;
+
+  try {
+    // One Promise.all, for the reason readFactory gives: a balance compared
+    // against an outstanding read one block later is a rumour, not a check.
+    const [balanceWei, outstandingWei, isSolvent, paused] = await Promise.all([
+      client.getBalance({address}),
+      client.readContract({...contract, functionName: "outstanding"}),
+      client.readContract({...contract, functionName: "isSolvent"}),
+      client.readContract({...contract, functionName: "paused"}),
+    ]);
+
+    return {ok: true, data: {address, balanceWei, outstandingWei, isSolvent, paused}};
+  } catch (err) {
+    return failure(err);
+  }
+}

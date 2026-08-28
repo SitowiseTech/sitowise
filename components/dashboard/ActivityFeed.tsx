@@ -1,12 +1,14 @@
 "use client";
 
 import {ArrowUpRightIcon} from "@/components/icons";
+import {Button} from "@/components/ui/Button";
 import {Reveal} from "@/components/Reveal";
 import {Skeleton} from "@/components/ui/Skeleton";
 import {StatusDot} from "@/components/ui/StatusDot";
 import {EthAmount} from "@/components/dashboard/EthAmount";
 import type {FeedItem} from "@/components/dashboard/useDashboardData";
 import {txUrl} from "@/lib/chain";
+import {downloadCsv, toCsv, weiToEthString} from "@/lib/csv";
 import {nodeLabel} from "@/lib/format";
 import {agoOrNothing} from "@/components/dashboard/dates";
 
@@ -29,12 +31,50 @@ export type ActivityFeedProps = {
   ethUsd: number | null;
 };
 
+const CSV_HEADERS = [
+  "date",
+  "type",
+  "node",
+  "amount_wei",
+  "amount_eth",
+  "tx_hash",
+] as const;
+
+/**
+ * The feed as a file.
+ *
+ * Anyone holding a node for more than a few days ends up wanting this in a
+ * spreadsheet, and the alternative was reading it off the screen by hand.
+ * Exactly what is on screen is exported, in the same order, so the file cannot
+ * disagree with the panel it came from.
+ */
+function exportFeed(items: FeedItem[]): void {
+  const rows = items.map((item) => [
+    item.createdAt ?? "",
+    item.kind === "credit" ? "Credited" : "Withdrawn",
+    `NODE ${nodeLabel(item.chainNodeId.toString())}`,
+    item.amountWei.toString(),
+    weiToEthString(item.amountWei),
+    item.txHash ?? "",
+  ]);
+  downloadCsv("sitowise-activity.csv", toCsv(CSV_HEADERS, rows));
+}
+
 export function ActivityFeed({items, loading, ethUsd}: ActivityFeedProps) {
   return (
     <Reveal variant="panel" className="panel">
       <div className="flex min-h-[52px] items-center justify-between gap-4 px-4 sm:px-5">
         <span className="mono-label">Activity</span>
-        <span className="mono-label">Newest first</span>
+        <span className="flex items-center gap-4">
+          <span className="mono-label">Newest first</span>
+          {/* Hidden rather than disabled with nothing to export: a control that
+              cannot do anything is noise on a panel that is already empty. */}
+          {items.length > 0 ? (
+            <Button variant="ghost" size="sm" onClick={() => exportFeed(items)}>
+              Export CSV
+            </Button>
+          ) : null}
+        </span>
       </div>
 
       {loading && items.length === 0 ? (

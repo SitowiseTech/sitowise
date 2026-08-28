@@ -400,3 +400,35 @@ export async function getEthUsd(): Promise<number | null> {
     return null;
   }
 }
+
+/* -------------------------------------------------------------------- cover */
+
+export type Cover = {
+  contract: `0x${string}`;
+  balanceWei: bigint;
+  outstandingWei: bigint;
+  covered: boolean;
+  paused: boolean;
+};
+
+/**
+ * GET /api/cover. Null on any failure, and the panel then renders nothing at
+ * all: a cover figure that might be stale or guessed is worse than no figure,
+ * because the only reason to show it is that it can be trusted.
+ */
+export async function getCover(): Promise<Cover | null> {
+  try {
+    const payload = await request<Json>("/api/cover");
+    const contract = field(payload, "contract");
+    if (typeof contract !== "string" || !isAddress(contract)) return null;
+    return {
+      contract: contract.toLowerCase() as `0x${string}`,
+      balanceWei: toBigInt(field(payload, "balanceWei", "balance_wei"), "balance"),
+      outstandingWei: toBigInt(field(payload, "outstandingWei", "outstanding_wei"), "outstanding"),
+      covered: field(payload, "covered") === true,
+      paused: field(payload, "paused") === true,
+    };
+  } catch {
+    return null;
+  }
+}

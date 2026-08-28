@@ -38,7 +38,11 @@ export const DEPLOY_LABEL = "Deploy a node";
  * concatenates them so a price change touches one file.
  */
 export const NODE_PRICE_ETH = "0.02";
-export const MAX_NODES_PER_WALLET = 50;
+/**
+ * The contract's own cap, across every tier together. Not the same number as a
+ * tier's allowance: Base alone allows 50, and the tiers sum to this.
+ */
+export const MAX_NODES_PER_WALLET = 70;
 export const DEPLOY_CTA_LABEL = `${DEPLOY_LABEL} · ${NODE_PRICE_ETH} ETH`;
 
 /**

@@ -30,12 +30,15 @@ select
   n.owner_address,
   n.mint_tx_hash,
   n.price_wei,
-  n.tier,
   n.status,
   n.created_at,
   coalesce(c.total, 0)                          as cumulative_wei,
   coalesce(w.total, 0)                          as withdrawn_wei,
-  greatest(coalesce(c.total, 0) - coalesce(w.total, 0), 0) as balance_wei
+  greatest(coalesce(c.total, 0) - coalesce(w.total, 0), 0) as balance_wei,
+  -- Appended, never inserted: "create or replace view" can only add columns at
+  -- the end, and a column placed in the middle is read as renaming whatever
+  -- already sat in that position.
+  n.tier
 from nodes n
 left join lateral (
   select sum(amount_wei) as total from credits where node_id = n.id

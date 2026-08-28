@@ -203,3 +203,59 @@ export async function setCursor(block: bigint, key = "payments", q: SqlQuery = s
           updated_at = now()
   `;
 }
+
+/* ------------------------------------------------------------- recovery --
+   Payments that stopped moving.
+
+   `manual_review` is a terminal state as far as the scheduled pass is
+   concerned, and it is reached two very different ways: by a payment that was
+   wrong (bad amount, self transfer), and by one that was right but whose mint
+   kept failing for a reason outside the payment, such as a relayer with no gas
+   left. The second kind is somebody who paid and got nothing, and until now
+   there was no way to put one back in the queue without opening the database. */
+
+export type ParkedPayment = PaymentRow & {mintable: boolean};
+
+/**
+ * Everything parked or failing, newest first.
+ *
+ * `minted` rows are excluded: they are finished, and the point of the list is
+ * what still owes somebody a node.
+ */
+export async function readParkedPayments(limit = 50): Promise<PaymentRow[]> {
+  return sql<PaymentRow>`
+    select * from payments
+     where status in ('manual_review', 'failed')
+     order by block_number desc, id desc
+     limit ${limit}
+  `;
+}
+
+/**
+ * Put one payment back in front of the minting pass.
+ *
+ * Resets the attempt counter, because the budget was spent on a condition that
+ * has since been fixed and leaving it at the ceiling means the row is picked up
+ * and parked again in the same pass.
+ *
+ * Requeuing cannot double mint. `mintFor` records the payment hash in
+ * `paymentRefUsed` and a second mint against it reverts `RefAlreadyUsed`, which
+ * the relayer already treats as success. The contract, not this function, is
+ * what makes it safe.
+ *
+ * Rows in `minted` are refused outright rather than silently ignored, so a
+ * mistaken call is visible instead of looking like it worked.
+ */
+export async function requeuePayment(txHash: string): Promise<PaymentRow | null> {
+  const rows = await sql<PaymentRow>`
+    update payments
+       set status = 'seen',
+           attempts = 0,
+           last_error = null,
+           updated_at = now()
+     where lower(tx_hash) = ${txHash.toLowerCase()}
+       and status in ('manual_review', 'failed')
+    returning *
+  `;
+  return rows[0] ?? null;
+}

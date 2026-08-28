@@ -1052,3 +1052,65 @@ export async function fastForwardCursor(args: {
     recordedPayments: recorded,
   };
 }
+
+/* --------------------------------------------------------------- adoption --
+   One payment, by hash, without touching the cursor.
+
+   Discovery walks a range and can leave a hole: a pass that claimed cursor over
+   blocks the index had not finished serving writes those blocks off, and a
+   transfer inside them is never seen again, because the cursor only moves
+   forward. That happened to a real 0.02 ETH payment, and there was no way to
+   recover it short of rewinding a day of chain and letting every new payment go
+   late while the watcher caught back up.
+
+   This asks the chain about one transaction instead. The candidate is built
+   from `eth_getTransactionByHash` rather than from the index, and then goes
+   through exactly the same `verify` every discovered transfer goes through, so
+   nothing is trusted here that is not trusted there. A wrong hash, a reverted
+   transaction, one addressed elsewhere or one for the wrong amount is refused
+   or parked, never minted. */
+
+export type AdoptResult =
+  | {ok: true; inserted: boolean; from: `0x${string}`; amountWei: string; status: string}
+  | {ok: false; reason: string};
+
+export async function adoptPayment(txHash: `0x${string}`): Promise<AdoptResult> {
+  const priceWei = nodePriceWei();
+  const payTo = paymentAddress();
+  const cfg = watcherConfig();
+
+  const head = await rpc().getBlockNumber();
+  const safeHead = head > cfg.confirmations ? head - cfg.confirmations : 0n;
+
+  const transaction = await transactionFor(txHash);
+  if (!transaction) return {ok: false, reason: "The chain does not know that transaction."};
+  if (transaction.blockNumber === null) {
+    return {ok: false, reason: "That transaction is still pending."};
+  }
+
+  // The candidate mirrors the chain, so `verify` cannot report a mismatch
+  // against the index: there is no index in this path to disagree with.
+  const candidate: IndexedTransfer = {
+    hash: txHash,
+    from: transaction.from.toLowerCase() as `0x${string}`,
+    to: (transaction.to?.toLowerCase() ?? null) as `0x${string}` | null,
+    valueWei: transaction.value,
+    blockNumber: transaction.blockNumber,
+    // Claimed, not trusted: `verify` re-reads the receipt from the chain and
+    // rejects the transaction if it actually reverted.
+    succeeded: true,
+  };
+
+  const verdict = await verify(candidate, priceWei, payTo, safeHead);
+  if (verdict.kind === "rejected") return {ok: false, reason: verdict.reason};
+  if (verdict.kind === "unverified") return {ok: false, reason: verdict.reason};
+
+  const {inserted} = await recordSeen(verdict.sighting);
+  return {
+    ok: true,
+    inserted,
+    from: verdict.sighting.from,
+    amountWei: verdict.sighting.amountWei.toString(),
+    status: verdict.sighting.status,
+  };
+}

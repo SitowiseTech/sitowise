@@ -37,6 +37,7 @@ import {
   MAX_NODES_PER_TICK,
 } from "@/lib/schedule";
 import {loadSettings} from "@/lib/settings";
+import {loadTiers, tierById} from "@/lib/tiers";
 import {markDistribution, markTick, recordError, setPausedReason} from "@/lib/workerState";
 import {randomDelaySec, randomWei, sum} from "@/worker/amounts";
 import {checkDistributor, creditBatch, distributorAccount} from "@/worker/chain";
@@ -130,14 +131,18 @@ type Candidate = {
  * balance, but it is not accruing any more, and crediting one would be a payout
  * nobody could explain.
  */
-async function ledgerIdsFor(chainIds: readonly bigint[]): Promise<Map<string, number>> {
-  const rows = await sql<{id: string | number; chain_node_id: string}>`
-    select id, chain_node_id
+async function ledgerIdsFor(
+  chainIds: readonly bigint[],
+): Promise<Map<string, {id: number; tier: string}>> {
+  const rows = await sql<{id: string | number; chain_node_id: string; tier: string | null}>`
+    select id, chain_node_id, tier
       from nodes
      where status = 'active'
        and chain_node_id = any(${chainIds.map((id) => id.toString())}::numeric[])
   `;
-  return new Map(rows.map((r) => [String(r.chain_node_id), Number(r.id)]));
+  return new Map(
+    rows.map((r) => [String(r.chain_node_id), {id: Number(r.id), tier: r.tier ?? "base"}]),
+  );
 }
 
 /**
@@ -285,15 +290,21 @@ async function runPass(opts: CreditOptions): Promise<CreditResult> {
   }
 
   const ledgerIds = await ledgerIdsFor(dueIds);
+  const {tiers} = await loadTiers();
 
   const candidates: Candidate[] = [];
   const droppedIds: string[] = [];
   for (const chainNodeId of dueIds) {
-    const nodeId = ledgerIds.get(chainNodeId.toString());
-    if (nodeId === undefined || chainNodeId < 1n || chainNodeId > totalNodes) {
+    const entry = ledgerIds.get(chainNodeId.toString());
+    if (entry === undefined || chainNodeId < 1n || chainNodeId > totalNodes) {
       droppedIds.push(chainNodeId.toString());
       continue;
     }
+    const nodeId = entry.id;
+    // The tier multiplier scales the configured base range. Applied to the drawn
+    // amount rather than to the range ends so a tier keeps the same spread of
+    // outcomes the base tier has, just moved up.
+    const bps = BigInt(tierById(entry.tier, tiers).payoutBps);
     candidates.push({
       chainNodeId,
       nodeId,
@@ -305,7 +316,7 @@ async function runPass(opts: CreditOptions): Promise<CreditResult> {
       // the configured range is around 8e12 wei, so it does — and switches to
       // rejection sampling above it rather than assuming. Either path is
       // uniform and neither takes a modulo, which would bias the low end.
-      amountWei: randomWei(config.minAmountWei, config.maxAmountWei),
+      amountWei: (randomWei(config.minAmountWei, config.maxAmountWei) * bps) / 10_000n,
     });
   }
 

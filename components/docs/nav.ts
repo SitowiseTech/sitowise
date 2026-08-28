@@ -84,6 +84,11 @@ export const DOC_NAV: readonly DocGroup[] = [
         blurb: "Active and retired, and every transition between them.",
       },
       {
+        href: "/docs/tiers",
+        label: "Tiers",
+        blurb: "Prices, per-tier allowances, and the SITOWISE each one needs.",
+      },
+      {
         href: "/docs/limits",
         label: "Limits",
         blurb: "Twenty-five nodes per wallet, and the reasoning behind the cap.",

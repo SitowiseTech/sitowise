@@ -6,10 +6,18 @@ import {Callout} from "@/components/ui/Callout";
 import {CopyButton} from "@/components/ui/CopyButton";
 import {Modal} from "@/components/ui/Modal";
 import {Skeleton} from "@/components/ui/Skeleton";
+import {TierPicker} from "@/components/dashboard/TierPicker";
 import {useToast} from "@/components/ui/Toast";
 import {useWallet} from "@/components/dashboard/WalletProvider";
 import {addressUrl, txUrl} from "@/lib/chain";
-import {getDeployQuote, getMe, syncNode, type DeployQuote, type Me} from "@/lib/apiClient";
+import {
+  getDeployQuote,
+  getMe,
+  syncNode,
+  type DeployQuote,
+  type Me,
+  type QuotedTier,
+} from "@/lib/apiClient";
 import {describeFactoryError, factoryConfigured, readFactoryConfig, waitForReceipt} from "@/lib/factory";
 import {formatEth, nodeLabel, shortAddress} from "@/lib/format";
 import {ensureChain, sendTransaction} from "@/lib/wallet";
@@ -91,6 +99,7 @@ export function DeployModal({open, onClose, onDeployed}: DeployModalProps) {
   const [mintedId, setMintedId] = useState<bigint | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [tierId, setTierId] = useState<QuotedTier["id"]>("base");
 
   // Bumped on every open and on close, so a poll loop from a previous run can
   // never write into a modal the user has already moved on from.
@@ -101,7 +110,7 @@ export function DeployModal({open, onClose, onDeployed}: DeployModalProps) {
     setPhase("loading");
     setError(null);
     try {
-      const next = await getDeployQuote();
+      const next = await getDeployQuote(address);
       if (run.current !== mine) return;
       setQuote(next);
       setPhase("ready");
@@ -173,7 +182,7 @@ export function DeployModal({open, onClose, onDeployed}: DeployModalProps) {
       // Re-read rather than trusting what the modal opened with: a price change
       // while the modal sat open would otherwise produce a transfer that has to
       // be sorted out by hand.
-      const fresh = await getDeployQuote();
+      const fresh = await getDeployQuote(address);
       if (run.current !== mine) return;
       setQuote(fresh);
 
@@ -195,10 +204,25 @@ export function DeployModal({open, onClose, onDeployed}: DeployModalProps) {
       const before = ownedIds((await getMe()) ?? {address, nodes: [], unsyncedChainNodeIds: []});
       if (run.current !== mine) return;
 
+      // The tier is chosen by the exact amount sent, so the price has to come
+      // from the freshly read quote rather than from what the modal opened
+      // with. A stale amount would either buy the wrong tier or match none.
+      const chosen = fresh.tiers.find((t) => t.id === tierId) ?? null;
+      if (!chosen) {
+        setPhase("ready");
+        setError("That tier is no longer available. Reopen the deploy window and pick again.");
+        return;
+      }
+      if (chosen.eligible === false) {
+        setPhase("ready");
+        setError(chosen.blockedReason ?? "This wallet cannot buy that tier right now.");
+        return;
+      }
+
       const txHash = await sendTransaction(wallet.provider, {
         from: address,
         to: fresh.paymentAddress,
-        value: fresh.priceWei,
+        value: chosen.priceWei,
       });
       if (run.current !== mine) return;
       broadcast = txHash;
@@ -244,10 +268,13 @@ export function DeployModal({open, onClose, onDeployed}: DeployModalProps) {
       setError(describeFactoryError(err));
       setPhase(broadcast ? "queued" : "ready");
     }
-  }, [wallet, address, awaitNode, onDeployed, toast]);
+  }, [wallet, address, awaitNode, onDeployed, toast, tierId]);
 
   const busy = BUSY.has(phase);
-  const price = quote === null ? null : `${formatEth(quote.priceWei, 6)} ETH`;
+  const tiers = quote?.tiers ?? [];
+  const selected = tiers.find((t) => t.id === tierId) ?? null;
+  const price = selected === null ? null : `${formatEth(selected.priceWei, 6)} ETH`;
+  const blocked = selected?.eligible === false;
 
   const title =
     phase === "done"
@@ -275,7 +302,7 @@ export function DeployModal({open, onClose, onDeployed}: DeployModalProps) {
           <Button
             onClick={() => void pay()}
             loading={busy}
-            disabled={quote === null || phase === "loading"}
+            disabled={quote === null || phase === "loading" || blocked}
           >
             {price === null ? "Send payment" : `Send ${price}`}
           </Button>
@@ -299,6 +326,16 @@ export function DeployModal({open, onClose, onDeployed}: DeployModalProps) {
             is minted to the exchange&rsquo;s address, which means you cannot withdraw from it and
             it cannot be moved to you. Send from this wallet, never from an exchange withdrawal.
           </Callout>
+        )}
+
+        {phase === "done" || phase === "queued" ? null : (
+          <TierPicker
+            tiers={tiers}
+            selected={tierId}
+            onSelect={setTierId}
+            holdingWei={quote?.holdingWei ?? null}
+            disabled={busy}
+          />
         )}
 
         <dl className="flex flex-col gap-3">

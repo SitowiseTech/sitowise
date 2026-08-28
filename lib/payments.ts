@@ -38,6 +38,8 @@ export type PaymentRow = {
   attempts: number;
   last_error: string | null;
   created_at: string;
+  /** Null on rows written before tiers existed, which read as base. */
+  tier: string | null;
 };
 
 /**
@@ -56,6 +58,8 @@ export async function recordSeen(
     blockNumber: bigint;
     status: Extract<PaymentStatus, "seen" | "manual_review">;
     note?: string;
+    /** Null when the amount matched no tier at all. */
+    tier?: string | null;
   },
   // Takes a transaction handle for the same reason setCursor does: the watcher
   // commits a block's payments and the cursor together, so a crash can repeat a
@@ -63,14 +67,15 @@ export async function recordSeen(
   q: SqlQuery = sql,
 ): Promise<{inserted: boolean}> {
   const rows = await q<{id: string}>`
-    insert into payments (tx_hash, from_address, amount_wei, block_number, status, last_error)
+    insert into payments (tx_hash, from_address, amount_wei, block_number, status, last_error, tier)
     values (
       ${args.txHash.toLowerCase()},
       ${args.from.toLowerCase()},
       ${args.amountWei.toString()},
       ${args.blockNumber.toString()},
       ${args.status},
-      ${args.note ?? null}
+      ${args.note ?? null},
+      ${args.tier ?? null}
     )
     on conflict (tx_hash) do nothing
     returning id

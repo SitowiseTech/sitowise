@@ -83,11 +83,11 @@ function firstDelaySeconds(): number {
 export async function recordMintedNodes(mints: MintedLog[]): Promise<RecordedNode[]> {
   if (mints.length === 0) return [];
 
-  // NodeMinted no longer carries a price: payment happens off chain, so the
-  // contract never learns what a node cost. The configured price is the only
-  // figure available, and it is recorded per row so a later price change does
-  // not rewrite the history of earlier sales.
-  const priceWei = nodePriceWei();
+  // NodeMinted carries no price: payment happens off chain, so the contract
+  // never learns what a node cost. The payment that produced the mint does know,
+  // and it is looked up per node below. A mint with no payment row behind it was
+  // made outside the site, and falls back to the configured base price.
+  const fallbackPriceWei = nodePriceWei();
 
   return tx(async (q) => {
     const recorded: RecordedNode[] = [];
@@ -98,15 +98,27 @@ export async function recordMintedNodes(mints: MintedLog[]): Promise<RecordedNod
         on conflict (address) do nothing
       `;
 
+      // What the buyer actually paid, and which tier that bought. Taken from the
+      // payment rather than from configuration, so a later price change cannot
+      // rewrite what an earlier sale cost or which tier it belonged to.
+      const paid = await q<{amount_wei: string; tier: string | null}>`
+        select amount_wei, tier from payments
+         where lower(mint_tx_hash) = ${mint.txHash.toLowerCase()}
+         limit 1
+      `;
+      const priceWei = paid[0]?.amount_wei ?? fallbackPriceWei.toString();
+      const tier = paid[0]?.tier ?? "base";
+
       // No conflict target: either unique constraint hitting means the node is
       // already recorded, and both mean the same thing to us.
       const inserted = await q<NodeRow>`
-        insert into nodes (chain_node_id, owner_address, mint_tx_hash, price_wei)
+        insert into nodes (chain_node_id, owner_address, mint_tx_hash, price_wei, tier)
         values (
           ${mint.chainNodeId.toString()},
           ${mint.owner},
           ${mint.txHash},
-          ${priceWei.toString()}
+          ${priceWei},
+          ${tier}
         )
         on conflict do nothing
         returning id, chain_node_id, owner_address, mint_tx_hash, price_wei, created_at

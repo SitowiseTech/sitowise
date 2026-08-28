@@ -13,8 +13,9 @@ import {
 } from "@/app/admin/panels";
 import {Passkeys} from "@/app/admin/Passkeys";
 import {SettingsForm} from "@/app/admin/SettingsForm";
+import {TiersForm} from "@/app/admin/TiersForm";
 import {SignOut} from "@/app/admin/SignOut";
-import {BuyersTable, DistributionsTable, WithdrawalsTable} from "@/app/admin/tables";
+import {BuyersTable, DistributionsTable, WithdrawalsTable, TierMoneyTable} from "@/app/admin/tables";
 import {Panel} from "@/components/ui/Panel";
 import {adminConfigured, isAdmin} from "@/lib/admin";
 import {hasPasskeys} from "@/lib/passkeys";
@@ -91,6 +92,13 @@ export default async function AdminPage() {
         note="The one control that has to work under pressure. Publishing the address here puts it in the site header without a deploy."
       />
       <CaForm />
+
+      <Section
+        title="Tiers"
+        note="What each tier costs, how many one wallet may hold, what it must hold in SITOWISE, and how fast it accrues."
+      />
+      <TiersForm contractCap={snapshot.chain.ok ? Number(snapshot.chain.data.maxPerWallet) : null} />
+      <TierMoneyTable rows={snapshot.tierMoney} />
 
       <Section
         title="Money"

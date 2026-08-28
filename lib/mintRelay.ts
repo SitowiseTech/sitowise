@@ -54,6 +54,7 @@ import {
   type MintedLog,
 } from "@/lib/rpc";
 import {scheduleNewNode} from "@/lib/schedule";
+import {loadTiers, tierById, tierUsageFor} from "@/lib/tiers";
 
 /** Long enough for a slow block, short enough that a pass cannot hang forever. */
 const RECEIPT_TIMEOUT_MS = 90_000;
@@ -290,6 +291,33 @@ async function mintOne(row: PaymentRow, account: PrivateKeyAccount): Promise<Min
   // One read before any gas is spent. A retry after a lost receipt is the
   // ordinary case, not the exception, and this is what makes it cost nothing.
   if (await paymentRefUsed(ref)) return resolveAlreadyMinted(row, owner, ref);
+
+  // The allowance, checked again here and not only at discovery.
+  //
+  // Discovery verifies a batch of candidates concurrently, so several payments
+  // from one wallet can each read the same free allowance and all pass. This
+  // loop is sequential and every mint marks its payment before the next one is
+  // looked at, so it is the point where the count is finally true.
+  {
+    const {tiers} = await loadTiers();
+    const tier = tierById(row.tier, tiers);
+    const used = (await tierUsageFor(owner))[tier.id];
+    // Minus one: this payment is itself counted in `used`, and it is the one
+    // asking for the slot rather than occupying it.
+    if (used - 1 >= tier.maxPerWallet) {
+      const reason =
+        `this wallet is at the ${tier.label} allowance of ${tier.maxPerWallet}; ` +
+        "the payment needs refunding rather than minting";
+      await markManualReview({id: row.id, reason});
+      return {
+        paymentId: row.id,
+        paymentTx: row.tx_hash,
+        owner,
+        status: "manual_review",
+        reason,
+      };
+    }
+  }
 
   let request;
   try {

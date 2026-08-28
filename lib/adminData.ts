@@ -13,6 +13,7 @@ import {paymentAddress} from "@/lib/env";
 import {recentDistributions, type DistributionRow} from "@/lib/ledger";
 import {readBalance, readFactory, type ChainRead, type FactorySnapshot} from "@/lib/onchain";
 import {loadSettings, type ResolvedSettings} from "@/lib/settings";
+import {loadTiers, TIER_IDS} from "@/lib/tiers";
 import {watcherStatus, type WatcherHealth} from "@/lib/watcher";
 import {isStalled, readWorkerState, silentFor, type WorkerState} from "@/lib/workerState";
 
@@ -90,6 +91,32 @@ export type WorkerHealth = {
   silentSec: number | null;
 };
 
+/**
+ * One tier, as money rather than as configuration.
+ *
+ * The tier form answers "what are the rules". This answers "what did the rules
+ * cost", which is the question that decides whether a tier stays open. Revenue
+ * and payouts are both counted here so the two sit side by side: a tier can
+ * look busy and still be the one draining the float.
+ */
+export type TierMoney = {
+  id: string;
+  label: string;
+  /** Nodes sold at this tier, from the ledger. */
+  nodes: number;
+  /** ETH taken in for them. */
+  revenueWei: bigint;
+  /** ETH credited to their balances, all time. */
+  creditedWei: bigint;
+  /** Credited in the last 24 hours, to compare against the daily cap. */
+  credited24hWei: bigint;
+  /** What one node of this tier draws per credit, after the multiplier. */
+  perCreditMinWei: bigint;
+  perCreditMaxWei: bigint;
+  /** Rough ETH per node per day at the configured interval. */
+  perDayWei: bigint;
+};
+
 export type AdminSnapshot = {
   chain: ChainRead<FactorySnapshot>;
   /**
@@ -108,6 +135,8 @@ export type AdminSnapshot = {
   distributions: DistributionRow[];
   withdrawals: WithdrawalRow[];
   buyers: BuyerRow[];
+  /** Per-tier money. Empty when the ledger could not be read. */
+  tierMoney: TierMoney[];
   alerts: Alert[];
   alertHistory: Alert[];
   /** Difference between what the contract holds and what it owes. Negative is the alarm. */
@@ -286,6 +315,53 @@ function projectDailySpend(settings: ResolvedSettings, activeNodes: number): big
  * Ordered by node count so the largest holder is the first thing seen, because
  * concentration is the fact most worth noticing here.
  */
+/**
+ * Money grouped by tier.
+ *
+ * Credits are joined through `nodes`, not through payments: a credit belongs to
+ * a node, and the node is what carries the tier. Rows written before tiers
+ * existed have no tier and are counted as base.
+ */
+async function readTierMoney(): Promise<
+  Map<string, {nodes: number; revenueWei: bigint; creditedWei: bigint; credited24hWei: bigint}>
+> {
+  const rows = await sql<{
+    tier: string;
+    nodes: string;
+    revenue_wei: string;
+    credited_wei: string;
+    credited_24h_wei: string;
+  }>`
+    select
+      coalesce(n.tier, 'base')                                   as tier,
+      count(*)::text                                             as nodes,
+      coalesce(sum(n.price_wei), 0)::text                        as revenue_wei,
+      coalesce(sum(c.total), 0)::text                            as credited_wei,
+      coalesce(sum(c.total_24h), 0)::text                        as credited_24h_wei
+    from nodes n
+    left join lateral (
+      select
+        sum(amount_wei)                                                        as total,
+        sum(amount_wei) filter (where created_at > now() - interval '24 hours') as total_24h
+      from credits where node_id = n.id
+    ) c on true
+    where n.status = 'active'
+    group by coalesce(n.tier, 'base')
+  `;
+
+  return new Map(
+    rows.map((r) => [
+      r.tier,
+      {
+        nodes: Number(r.nodes),
+        revenueWei: BigInt(r.revenue_wei),
+        creditedWei: BigInt(r.credited_wei),
+        credited24hWei: BigInt(r.credited_24h_wei),
+      },
+    ]),
+  );
+}
+
 async function readBuyers(limit = 50): Promise<BuyerRow[]> {
   const rows = await sql<{
     from_address: string;
@@ -345,12 +421,13 @@ export async function adminSnapshot(): Promise<AdminSnapshot> {
   let distributions: DistributionRow[] = [];
   let withdrawals: WithdrawalRow[] = [];
   let buyers: BuyerRow[] = [];
+  let tierMoney: TierMoney[] = [];
   let alerts: Alert[] = [];
   let alertHistory: Alert[] = [];
   let worker: WorkerHealth = {state: null, stalled: false, silentSec: null};
 
   try {
-    const [totals, dist, wd, buy, open, history, state] = await Promise.all([
+    const [totals, dist, wd, buy, open, history, state, money] = await Promise.all([
       readLedger(),
       recentDistributions(50),
       readWithdrawals(50),
@@ -358,6 +435,7 @@ export async function adminSnapshot(): Promise<AdminSnapshot> {
       openAlerts(),
       recentAlerts(20),
       readWorkerState(),
+      readTierMoney(),
     ]);
     ledger = totals;
     distributions = dist;
@@ -366,6 +444,37 @@ export async function adminSnapshot(): Promise<AdminSnapshot> {
     alerts = open;
     alertHistory = history;
     worker = {state, stalled: isStalled(state), silentSec: silentFor(state)};
+
+    // The configured range and the tier multipliers turn the raw totals above
+    // into the two numbers an operator actually decides on: what one node of
+    // this tier draws per credit, and what that comes to over a day.
+    const [{tiers}, resolved] = await Promise.all([loadTiers(), loadSettings()]);
+    const cfg = resolved.config;
+    // The tick quantises the per-node delay, so the average interval is the
+    // midpoint of the configured window. Rough on purpose, and labelled as such.
+    const avgIntervalSec = BigInt(Math.max(1, Math.round((cfg.minDelaySec + cfg.maxDelaySec) / 2)));
+    const perDay = 86_400n / avgIntervalSec;
+
+    tierMoney = TIER_IDS.map((id) => {
+      const spec = tiers[id];
+      const bps = BigInt(spec.payoutBps);
+      const row = money.get(id) ?? {
+        nodes: 0,
+        revenueWei: 0n,
+        creditedWei: 0n,
+        credited24hWei: 0n,
+      };
+      const minWei = (cfg.minAmountWei * bps) / 10_000n;
+      const maxWei = (cfg.maxAmountWei * bps) / 10_000n;
+      return {
+        id,
+        label: spec.label,
+        ...row,
+        perCreditMinWei: minWei,
+        perCreditMaxWei: maxWei,
+        perDayWei: ((minWei + maxWei) / 2n) * perDay,
+      };
+    });
   } catch (err) {
     ledgerError = message(err);
   }
@@ -405,6 +514,7 @@ export async function adminSnapshot(): Promise<AdminSnapshot> {
     distributions,
     withdrawals,
     buyers,
+    tierMoney,
     alerts,
     alertHistory,
     coverageWei,

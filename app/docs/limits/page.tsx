@@ -18,9 +18,9 @@ export default function LimitsPage() {
       href="/docs/limits"
       lede={
         <>
-          One wallet may hold at most {MAX_NODES_PER_WALLET} nodes. The cap is in the contract, not
-          in the website, and this page explains what it is for, what bounds it, and what it
-          honestly cannot do.
+          One wallet may hold at most {MAX_NODES_PER_WALLET} nodes across every tier together.
+          That cap is in the contract, not in the website. This page explains what it is for, what
+          bounds it, and what it honestly cannot do.
         </>
       }
     >
@@ -108,10 +108,22 @@ cast call $FACTORY "nodeCountOf(address)(uint256)" $WALLET`}</CodeBlock>
           </tr>
           <tr>
             <td>Node price</td>
-            <td>Exactly {NODE_PRICE_ETH} ETH per node, no more and no less</td>
             <td>
-              The watcher. Payment happens outside the contract, so anything but the exact amount
-              is held for review rather than turned into a node.
+              Exactly one of the <Link href="/docs/tiers">tier prices</Link>, no more and no less
+            </td>
+            <td>
+              The watcher. Payment happens outside the contract, so an amount matching no tier is
+              held for review rather than turned into a node.
+            </td>
+          </tr>
+          <tr>
+            <td>Nodes per tier, per wallet</td>
+            <td>
+              Set per tier. See <Link href="/docs/tiers">Tiers</Link>
+            </td>
+            <td>
+              Us, before minting. The contract knows nothing about tiers, so this one is our
+              bookkeeping rather than a guarantee you can read off chain.
             </td>
           </tr>
           <tr>

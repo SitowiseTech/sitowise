@@ -1,7 +1,7 @@
 import {Cell, NoData, TableHead} from "@/app/admin/ui";
 import {Panel} from "@/components/ui/Panel";
 import {addressUrl, txUrl} from "@/lib/chain";
-import type {BuyerRow, WithdrawalRow} from "@/lib/adminData";
+import type {BuyerRow, TierMoney, WithdrawalRow} from "@/lib/adminData";
 import type {DistributionRow} from "@/lib/ledger";
 import {formatEth, formatEthLabel, nodeLabel, shortAddress, timeAgo} from "@/lib/format";
 
@@ -148,6 +148,60 @@ export function WithdrawalsTable({rows}: {rows: WithdrawalRow[]}) {
                       {shortAddress(row.txHash, 8, 6)}
                     </a>
                   </Cell>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+const TIER_COLUMNS = [
+  "Tier",
+  "Nodes",
+  "Taken in",
+  "Paid out",
+  "Last 24h",
+  "Per credit",
+  "Per node, per day",
+] as const;
+
+/**
+ * Money by tier.
+ *
+ * Every other panel answers a question about the whole product. This one exists
+ * because a tier is a decision that can be reversed: it shows what each one has
+ * taken in against what it has paid out, so a tier that is quietly draining the
+ * float is visible before the float is gone rather than after.
+ *
+ * The last two columns are the configured rate rather than history: what one
+ * node of this tier draws per credit, and roughly what that comes to in a day.
+ * They are what you change in the tier form above, shown here in ETH so the
+ * effect of a basis-point edit is not left to arithmetic.
+ */
+export function TierMoneyTable({rows}: {rows: TierMoney[]}) {
+  return (
+    <Panel label="Money by tier" padding="none">
+      {rows.length === 0 ? (
+        <p className="px-5 py-4 text-[14px] text-faint">No data yet</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] border-collapse">
+            <TableHead columns={TIER_COLUMNS} />
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id} className="border-b border-line last:border-0">
+                  <Cell align="left">{row.label}</Cell>
+                  <Cell align="right">{row.nodes}</Cell>
+                  <Cell align="right">{formatEthLabel(row.revenueWei)}</Cell>
+                  <Cell align="right">{formatEthLabel(row.creditedWei)}</Cell>
+                  <Cell align="right">{formatEthLabel(row.credited24hWei)}</Cell>
+                  <Cell align="right">
+                    {formatEth(row.perCreditMinWei, 8)} to {formatEth(row.perCreditMaxWei, 8)}
+                  </Cell>
+                  <Cell align="right">{formatEthLabel(row.perDayWei)}</Cell>
                 </tr>
               ))}
             </tbody>

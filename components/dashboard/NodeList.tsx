@@ -10,6 +10,7 @@ import {Tooltip} from "@/components/dashboard/Tooltip";
 import type {DashNode} from "@/components/dashboard/useDashboardData";
 import type {NodeDetail} from "@/lib/apiClient";
 import {nodeLabel} from "@/lib/format";
+import {TierBadge} from "@/components/dashboard/TierBadge";
 import {dateOrNothing} from "@/components/dashboard/dates";
 
 /**
@@ -146,6 +147,7 @@ export function NodeList({
                       }`}
                     />
                     NODE {nodeLabel(node.chainNodeId.toString())}
+                    <TierBadge tier={node.tier} />
                   </button>
 
                   <Cell label="Deployed">

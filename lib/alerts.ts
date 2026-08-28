@@ -38,6 +38,11 @@ export type AlertKind =
   | "payment_discovery"
   /** Stored settings that had to be ignored. */
   | "config"
+  /**
+   * A stored tier setting could not be used, or two tiers share a price. Loud
+   * because a price nobody meant would park every payment sent against it.
+   */
+  | "tier_config"
   /** Anything the loop threw. */
   | "worker_error";
 

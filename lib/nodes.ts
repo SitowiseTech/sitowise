@@ -17,6 +17,7 @@ export type NodeViewRow = {
   owner_address: string;
   mint_tx_hash: string;
   price_wei: string;
+  tier: string | null;
   status: string;
   created_at: Date | string | null;
   cumulative_wei: string;
@@ -34,6 +35,8 @@ export type NodeSummary = {
   withdrawnWei: string;
   mintTx: string;
   status: string | null;
+  /** Null on nodes recorded before tiers existed, which read as base. */
+  tier: string | null;
 };
 
 export function shapeNode(row: NodeViewRow): NodeSummary {
@@ -46,6 +49,7 @@ export function shapeNode(row: NodeViewRow): NodeSummary {
     withdrawnWei: toWeiString(row.withdrawn_wei),
     mintTx: String(row.mint_tx_hash),
     status: toText(row.status),
+    tier: toText(row.tier),
   };
 }
 

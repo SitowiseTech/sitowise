@@ -130,6 +130,8 @@ export type NodeSummary = {
   createdAt: string | null;
   mintTx: string | null;
   status: string;
+  /** "base" on nodes recorded before tiers existed. */
+  tier: string;
 };
 
 export type Credit = {
@@ -200,6 +202,8 @@ function parseNode(row: Json): NodeSummary {
     createdAt: toText(field(row, "createdAt", "created_at")),
     mintTx: toText(field(row, "mintTx", "mint_tx_hash", "mintTxHash")),
     status: toText(field(row, "status")) ?? "active",
+    // A node from before tiers existed carries no tier and is a base node.
+    tier: toText(field(row, "tier")) ?? "base",
   };
 }
 
@@ -352,10 +356,30 @@ export async function syncNode(
  * environment, because the contract never sees the payment and so cannot be
  * asked either question.
  */
+export type QuotedTier = {
+  id: "base" | "plus" | "prime";
+  label: string;
+  priceWei: bigint;
+  maxPerWallet: number;
+  /** SITOWISE that must be held. Zero means open to anyone. */
+  holdingWei: bigint;
+  /** Accrual against the base rate, in basis points. 10000 is the base rate. */
+  payoutBps: number;
+  onSale: boolean;
+  /** Wallet-specific, present only when the quote was asked for an address. */
+  held: number | null;
+  remaining: number | null;
+  eligible: boolean | null;
+  blockedReason: string | null;
+};
+
 export type DeployQuote = {
   priceWei: bigint;
   paymentAddress: `0x${string}`;
   chainId: number;
+  tiers: QuotedTier[];
+  /** SITOWISE the quoted wallet holds, when it could be read. */
+  holdingWei: bigint | null;
 };
 
 /**
@@ -365,8 +389,11 @@ export type DeployQuote = {
  * send a transfer that no longer matches, and a wrong payment address would
  * send the ETH nowhere it can be recovered from.
  */
-export async function getDeployQuote(): Promise<DeployQuote> {
-  const payload = await request<Json>("/api/deploy-quote");
+export async function getDeployQuote(owner?: string | null): Promise<DeployQuote> {
+  // Named `owner` so it cannot be confused with the payment address parsed out
+  // of the response a few lines down.
+  const query = owner && isAddress(owner) ? `?address=${owner}` : "";
+  const payload = await request<Json>(`/api/deploy-quote${query}`);
 
   const address = toText(field(payload, "paymentAddress", "payment_address")) ?? "";
   if (!isAddress(address)) {
@@ -378,10 +405,28 @@ export async function getDeployQuote(): Promise<DeployQuote> {
     throw new ApiError("The server quoted a price of zero, which cannot be right.", 502);
   }
 
+  const holdingRaw = field(payload, "holdingWei", "holding_wei");
+
   return {
     priceWei,
     paymentAddress: address.toLowerCase() as `0x${string}`,
     chainId: toNumber(field(payload, "chainId", "chain_id"), "chain id"),
+    tiers: rows(field(payload, "tiers")).map((row) => ({
+      id: (toText(field(row, "id")) ?? "base") as QuotedTier["id"],
+      label: toText(field(row, "label")) ?? "Base",
+      priceWei: toBigInt(field(row, "priceWei", "price_wei"), "tier price"),
+      maxPerWallet: toNumber(field(row, "maxPerWallet", "max_per_wallet"), "tier allowance"),
+      holdingWei: toBigInt(field(row, "holdingWei", "holding_wei"), "tier holding"),
+      payoutBps: toNumber(field(row, "payoutBps", "payout_bps"), "tier payout"),
+      onSale: field(row, "onSale", "on_sale") !== false,
+      held: typeof field(row, "held") === "number" ? (field(row, "held") as number) : null,
+      remaining:
+        typeof field(row, "remaining") === "number" ? (field(row, "remaining") as number) : null,
+      eligible:
+        typeof field(row, "eligible") === "boolean" ? (field(row, "eligible") as boolean) : null,
+      blockedReason: toText(field(row, "blockedReason", "blocked_reason")),
+    })),
+    holdingWei: holdingRaw === undefined ? null : toBigInt(holdingRaw, "token holding"),
   };
 }
 

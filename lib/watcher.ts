@@ -59,6 +59,15 @@ import {
   type IndexedTransfer,
 } from "@/lib/explorer";
 import {getCursor, recordSeen, setCursor} from "@/lib/payments";
+import {
+  holdingOf,
+  loadTiers,
+  tierForAmount,
+  tierUsageFor,
+  TIER_IDS,
+  type Tier,
+  type TierId,
+} from "@/lib/tiers";
 import {receiptFor, rpc, transactionFor} from "@/lib/rpc";
 
 /** Key in `watcher_state`. One watcher, one cursor; named so the table can hold others. */
@@ -109,6 +118,8 @@ export type PaymentSighting = {
   blockNumber: bigint;
   status: "seen" | "manual_review";
   note?: string;
+  /** Which tier the amount bought. Null when the amount matched no tier. */
+  tier: TierId | null;
 };
 
 export type WatcherScan = {
@@ -167,27 +178,99 @@ export type WatcherScan = {
  * amount, because "wrong amount" without the number is useless to whoever has
  * to decide between refunding and topping up.
  */
-export function classify(
+/**
+ * Which status and tier a transfer to the payments wallet earns.
+ *
+ * Was a single price comparison. With tiers there are three further ways a
+ * payment can be right on the amount and still not be a sale: the tier is
+ * closed, the buyer does not hold enough SITOWISE for a gated tier, or the
+ * buyer is already at that tier's allowance. All three park the payment with a
+ * note saying exactly which, because the operator's next move is a refund and
+ * the reason is what they will have to explain.
+ *
+ * In-flight payments count against the allowance as well as minted nodes.
+ * Without that, five payments sent in the same second each see an empty
+ * allowance and all five pass.
+ */
+export async function decide(
   amountWei: bigint,
-  priceWei: bigint,
   from: `0x${string}`,
   payTo: `0x${string}`,
-): {status: "seen" | "manual_review"; note?: string} {
+  tiers: Record<TierId, Tier>,
+): Promise<{status: "seen" | "manual_review"; note?: string; tier: TierId | null}> {
   // The operator moving float out of and back into the payments wallet must not
   // mint the operator a node, and it is the one case where an exact amount is
   // still not a sale.
   if (from === payTo) {
-    return {status: "manual_review", note: "self-transfer from the payments wallet, not a purchase"};
+    return {
+      status: "manual_review",
+      tier: null,
+      note: "self-transfer from the payments wallet, not a purchase",
+    };
   }
-  if (amountWei === priceWei) return {status: "seen"};
   if (amountWei === 0n) {
-    return {status: "manual_review", note: "zero-value transaction to the payments wallet"};
+    return {
+      status: "manual_review",
+      tier: null,
+      note: "zero-value transaction to the payments wallet",
+    };
   }
-  const verb = amountWei < priceWei ? "under" : "over";
-  return {
-    status: "manual_review",
-    note: `${verb}paid: ${amountWei.toString()} wei against a price of ${priceWei.toString()} wei`,
-  };
+
+  const tier = tierForAmount(amountWei, tiers);
+  if (!tier) {
+    const prices = TIER_IDS.map((id) => `${tiers[id].label} ${tiers[id].priceWei.toString()}`).join(", ");
+    return {
+      status: "manual_review",
+      tier: null,
+      note: `${amountWei.toString()} wei matches no tier price (${prices})`,
+    };
+  }
+
+  if (!tier.onSale) {
+    return {
+      status: "manual_review",
+      tier: tier.id,
+      note: `the ${tier.label} tier is closed to new purchases`,
+    };
+  }
+
+  // Gated tiers: the holding is read from the chain at the moment the payment
+  // is processed. A balance that was there when they clicked and gone when the
+  // payment landed is not a balance.
+  if (tier.holdingWei > 0n) {
+    const holding = await holdingOf(from);
+    if (!holding.ok) {
+      // Not a refusal: the chain could not answer, so the payment is parked
+      // rather than judged. Requeue once the read works again.
+      return {
+        status: "manual_review",
+        tier: tier.id,
+        note: `could not read the SITOWISE balance to check ${tier.label} eligibility: ${holding.reason}`,
+      };
+    }
+    if (holding.balanceWei < tier.holdingWei) {
+      return {
+        status: "manual_review",
+        tier: tier.id,
+        note:
+          `${tier.label} needs ${tier.holdingWei.toString()} wei of SITOWISE held, ` +
+          `this wallet holds ${holding.balanceWei.toString()}`,
+      };
+    }
+  }
+
+  const used = (await tierUsageFor(from))[tier.id];
+  if (used >= tier.maxPerWallet) {
+    return {
+      status: "manual_review",
+      tier: tier.id,
+      note:
+        `this wallet is at the ${tier.label} allowance of ${tier.maxPerWallet} ` +
+        `(${used} already bought or in flight)`,
+    };
+  }
+
+  return {status: "seen", tier: tier.id};
 }
 
 /* -------------------------------------------------------------- verifying */
@@ -217,7 +300,7 @@ type Verdict =
  */
 async function verify(
   candidate: IndexedTransfer,
-  priceWei: bigint,
+  tiers: Record<TierId, Tier>,
   payTo: `0x${string}`,
   safeHead: bigint,
 ): Promise<Verdict> {
@@ -270,7 +353,7 @@ async function verify(
   }
 
   const from = transaction.from.toLowerCase() as `0x${string}`;
-  const verdict = classify(transaction.value, priceWei, from, payTo);
+  const verdict = await decide(transaction.value, from, payTo, tiers);
   const mismatch = transaction.value !== candidate.valueWei || from !== candidate.from;
 
   return {
@@ -285,6 +368,7 @@ async function verify(
       // An index that misreports a payment is a reason for a human to look, even
       // when the chain's own amount happens to be exactly right.
       status: mismatch ? "manual_review" : verdict.status,
+      tier: verdict.tier,
       note: mismatch
         ? `explorer index disagreed with the chain (index said ${candidate.valueWei.toString()} wei ` +
           `from ${candidate.from}); recorded from the chain`
@@ -345,6 +429,7 @@ async function commit(
           amountWei: sighting.amountWei,
           blockNumber: sighting.blockNumber,
           status: sighting.status,
+          tier: sighting.tier,
           note: sighting.note,
         },
         q,
@@ -629,9 +714,17 @@ export type ScanOptions = {
 export async function scanPayments(opts: ScanOptions = {}): Promise<WatcherScan> {
   const started = Date.now();
   const cfg = watcherConfig();
-  const priceWei = nodePriceWei();
+  const {tiers, problems: tierProblems} = await loadTiers();
   const payTo = paymentAddress();
   const deadline = started + (opts.budgetMs ?? cfg.budgetMs);
+
+  // A broken tier setting must be loud: the pass still runs on the defaults it
+  // could resolve, but a price nobody meant would park every payment silently.
+  if (tierProblems.length > 0) {
+    await raiseAlert("tier_config", tierProblems.join(" "));
+  } else {
+    await clearAlert("tier_config");
+  }
 
   const head = await rpc().getBlockNumber();
   const safeHead = head > cfg.confirmations ? head - cfg.confirmations : 0n;
@@ -681,7 +774,7 @@ export async function scanPayments(opts: ScanOptions = {}): Promise<WatcherScan>
   // Verify in bounded parallel. Two RPC reads per candidate, and for the wallet
   // this watches there is usually nothing at all to verify.
   const verdicts = await inBatches(found.candidates, cfg.batchSize, (candidate) =>
-    verify(candidate, priceWei, payTo, safeHead),
+    verify(candidate, tiers, payTo, safeHead),
   );
 
   const sightings: PaymentSighting[] = [];
@@ -1075,7 +1168,7 @@ export type AdoptResult =
   | {ok: false; reason: string};
 
 export async function adoptPayment(txHash: `0x${string}`): Promise<AdoptResult> {
-  const priceWei = nodePriceWei();
+  const {tiers} = await loadTiers();
   const payTo = paymentAddress();
   const cfg = watcherConfig();
 
@@ -1101,7 +1194,7 @@ export async function adoptPayment(txHash: `0x${string}`): Promise<AdoptResult> 
     succeeded: true,
   };
 
-  const verdict = await verify(candidate, priceWei, payTo, safeHead);
+  const verdict = await verify(candidate, tiers, payTo, safeHead);
   if (verdict.kind === "rejected") return {ok: false, reason: verdict.reason};
   if (verdict.kind === "unverified") return {ok: false, reason: verdict.reason};
 

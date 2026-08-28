@@ -4,7 +4,7 @@ import {CodeBlock} from "@/components/docs/CodeBlock";
 import {DocFigure, DocPage, DocTable} from "@/components/docs/DocPage";
 import {LifecycleDiagram} from "@/components/docs/charts/LifecycleDiagram";
 import {Callout} from "@/components/ui/Callout";
-import {MAX_NODES_PER_WALLET, NODE_PRICE_ETH} from "@/lib/site";
+import {MAX_NODES_PER_WALLET} from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Node model",
@@ -104,7 +104,7 @@ if (node.owner != msg.sender) revert NotNodeOwner();`}</CodeBlock>
           <tr>
             <td>Not a deposit</td>
             <td>
-              The {NODE_PRICE_ETH} ETH is a purchase, sent to the payments wallet outside the
+              The price is a purchase, sent to the payments wallet outside the
               contract. It is not held for you, it never enters the factory, and it is not
               refundable.
             </td>

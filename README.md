@@ -3,10 +3,10 @@
 Node sales on Robinhood Chain (chain id 4663), plus the site, dashboard, public API, docs,
 payment watcher and distribution worker that go with it.
 
-A **node** is a position in `SitowiseFactory`. You pay 0.02 ETH, a node is recorded as yours,
-and a balance accrues against it on chain. It is not an NFT and not a token: there is nothing
-to trade, it cannot be transferred, and the only thing a node does is accumulate a balance you
-withdraw to an address you choose.
+A **node** is a position in `SitowiseFactory`. You pay one of the tier prices (0.02, 0.04 or
+0.10 ETH), a node is recorded as yours, and a balance accrues against it on chain. It is not an
+NFT and not a token: there is nothing to trade, it cannot be transferred, and the only thing a
+node does is accumulate a balance you withdraw to an address you choose.
 
 - **App:** Next.js 16 (App Router, Turbopack), TypeScript strict, Tailwind v4.
 - **Chain:** Robinhood Chain 4663 (`0x1237`), RPC `https://rpc.mainnet.chain.robinhood.com`,
@@ -57,8 +57,9 @@ Pausing blocks new mints and never blocks a withdrawal.
 
 Payment happens **outside** the contract, which is why there are four wallets.
 
-1. The buyer sends a plain 0.02 ETH transfer to the **payments wallet**. They never call the
-   contract, so they never pay contract gas.
+1. The buyer sends a plain transfer of exactly one tier price to the **payments wallet**. They
+   never call the contract, so they never pay contract gas. The amount is what selects the tier,
+   so one wallet serves all three.
 2. The **watcher** (`/api/cron/payments`) reads new blocks, finds transfers to that wallet and
    records each one in `payments` at status `seen` **before** anything is minted. A wrong amount
    goes to `manual_review` instead, and no node is created.
@@ -183,7 +184,7 @@ the four-wallet setup.
 | `NEXT_PUBLIC_CHAIN_ID` | `4663` |
 | `NEXT_PUBLIC_RPC_URL` | Chain RPC |
 | `PAYMENT_ADDRESS` | Wallet 2. Receives node payments; the contract never sees them |
-| `NODE_PRICE_WEI` | `20000000000000000` (0.02 ETH). Exact match required to mint |
+| `NODE_PRICE_WEI` | `20000000000000000` (0.02 ETH). The base tier price, and the fallback for a mint with no payment behind it. Tier prices themselves live in `lib/tiers.ts` and the `settings` table |
 | `RELAYER_ADDRESS` / `RELAYER_PRIVATE_KEY` | Wallet 3. Calls `mintFor`, holds gas only |
 | `DISTRIBUTOR_ADDRESS` / `DISTRIBUTOR_PRIVATE_KEY` | Wallet 4. Calls `creditBatch`, holds payout funds |
 | `CRON_KEY` | Shared secret for the `x-cron-key` header |
@@ -207,6 +208,32 @@ supply the value explicitly when building.
 
 Both server keys are hot by definition. Keep the deployer/owner key and the payments wallet key
 off the server entirely, and keep only a few days of payout runway on the distributor.
+
+## Tiers
+
+Three tiers, told apart by the exact amount paid:
+
+| Tier | Price | Per wallet | Must hold | Accrual |
+|---|---|---|---|---|
+| Base | 0.02 ETH | 50 | nothing | base rate |
+| Plus | 0.04 ETH | 15 | 1,000,000 SITOWISE | 2.4x base |
+| Prime | 0.10 ETH | 5 | 3,000,000 SITOWISE | 7.5x base |
+
+Prices are fixed in ETH rather than in dollars, because the pipeline mints on an exact amount
+match and a price that moved with an exchange rate would never quite be the amount that was
+quoted.
+
+**Only `maxPerWallet` is enforced on chain**, and it is the ceiling across all tiers together.
+The per-tier allowances and the SITOWISE thresholds are applied by the payment pipeline before
+minting: a payment that fails one is parked in `manual_review` and needs refunding, not minting.
+`/docs/tiers` says this in as many words, because implying the contract polices tiers would be a
+lie.
+
+The allowances must add up to no more than `maxPerWallet`, or the tiers cannot all be filled.
+With the defaults above that sum is 70, so the contract cap has to be at least 70.
+
+Eligibility is read from the chain when the payment is processed, not when the buyer clicks.
+Tier settings live in the `settings` table (`tier.*`) and are editable from /admin.
 
 ## What is NOT done yet
 

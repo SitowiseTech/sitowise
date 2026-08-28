@@ -70,11 +70,14 @@ export default function ApiOverviewPage() {
 
       <h2 id="endpoints">The public endpoints</h2>
       <CodeBlock label="Public surface" copyable={false}>{`GET /api/stats
+GET /api/tiers
+GET /api/cover
 GET /api/nodes/:address
 GET /api/node/:id?limit=50
 GET /api/distributions?limit=50
 GET /api/deploy-quote
-GET /api/price`}</CodeBlock>
+GET /api/price
+GET /api/openapi.json`}</CodeBlock>
       {API_GROUP ? <DocCards items={API_GROUP.items.slice(2, 6)} /> : null}
       <p>
         <code>/api/deploy-quote</code> answers{" "}
@@ -97,6 +100,21 @@ GET /api/price`}</CodeBlock>
         <code>POST /api/nodes/sync</code>, and are covered on{" "}
         <a href="/docs/api/authentication">Authentication</a>. Nothing in this API withdraws, and
         no endpoint here can move funds; see <a href="/docs/withdrawing">Withdrawing</a>.
+      </p>
+
+      <h2 id="spec">The spec</h2>
+      <p>
+        <code>/api/openapi.json</code> is this API as an OpenAPI 3.1 document, so it can be
+        loaded straight into a client generator or an HTTP client rather than transcribed by
+        hand from these pages.
+      </p>
+      <CodeBlock label="Try it">{`curl -s https://sitowise.tech/api/openapi.json | jq '.paths | keys'`}</CodeBlock>
+      <p>
+        It describes the public surface only. The admin and scheduled routes are deliberately
+        left out: listing a guarded endpoint in a public document advertises it without making
+        it any more usable. The document is written by hand rather than generated from the
+        route handlers, because a generated spec drifts silently the moment a handler changes
+        shape, and a spec that is quietly wrong is worse than one that is obviously stale.
       </p>
 
       <h2 id="wei">Wei is a string, always</h2>

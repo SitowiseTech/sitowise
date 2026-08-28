@@ -194,6 +194,11 @@ export const DOC_NAV: readonly DocGroup[] = [
         blurb: "Recent distribution rounds, newest first.",
       },
       {
+        href: "/docs/api/tiers",
+        label: "GET /api/tiers",
+        blurb: "Prices, allowances and what enforces each rule.",
+      },
+      {
         href: "/docs/api/cover",
         label: "GET /api/cover",
         blurb: "Whether node balances are backed, read from the chain.",

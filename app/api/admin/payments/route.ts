@@ -28,7 +28,9 @@ import {
   readParkedPayments,
   requeuePayment,
 } from "@/lib/payments";
-import {adoptPayment, readPaymentFacts} from "@/lib/watcher";
+import {adoptPayment, decide, readPaymentFacts} from "@/lib/watcher";
+import {loadTiers} from "@/lib/tiers";
+import {paymentAddress} from "@/lib/env";
 
 export async function GET(req: Request): Promise<Response> {
   const limit = checkLimit(req, "admin-payments", {limit: 30});
@@ -49,6 +51,7 @@ export async function GET(req: Request): Promise<Response> {
           amountWei: row.amount_wei,
           blockNumber: row.block_number,
           status: row.status,
+          tier: row.tier,
           attempts: row.attempts,
           lastError: row.last_error,
           createdAt: row.created_at,
@@ -116,7 +119,19 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
 
-    const row = await requeuePayment(txHash);
+    // Re-decide from the chain and the current tier settings, rather than
+    // trusting the verdict this payment was parked with. A price that matched
+    // no tier last week can be a tier price today.
+    const facts = await readPaymentFacts(txHash as `0x${string}`);
+    if (!facts.ok) return jsonError(facts.reason, 400, limit.headers);
+    if (!facts.toPayments) {
+      return jsonError("That transaction was not sent to the payments wallet.", 400, limit.headers);
+    }
+
+    const {tiers} = await loadTiers();
+    const verdict = await decide(facts.amountWei, facts.from, paymentAddress(), tiers);
+
+    const row = await requeuePayment(txHash, verdict);
     if (!row) {
       // Not parked. Either it is already minted, or discovery never recorded it
       // at all, which is the case a cursor that stepped over a block leaves

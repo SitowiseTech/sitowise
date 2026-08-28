@@ -101,9 +101,15 @@ export async function recordMintedNodes(mints: MintedLog[]): Promise<RecordedNod
       // What the buyer actually paid, and which tier that bought. Taken from the
       // payment rather than from configuration, so a later price change cannot
       // rewrite what an earlier sale cost or which tier it belonged to.
+      //
+      // Joined on `paymentRef`, which the contract stores and which is the
+      // payment's own transaction hash. The obvious join, on the payment's
+      // `mint_tx_hash`, is wrong here: the relay records the node before it
+      // marks the payment minted, so that column is still empty at this moment
+      // and every lookup silently missed, quietly filing tiered nodes as base.
       const paid = await q<{amount_wei: string; tier: string | null}>`
         select amount_wei, tier from payments
-         where lower(mint_tx_hash) = ${mint.txHash.toLowerCase()}
+         where lower(tx_hash) = ${mint.paymentRef.toLowerCase()}
          limit 1
       `;
       const priceWei = paid[0]?.amount_wei ?? fallbackPriceWei.toString();

@@ -47,6 +47,24 @@ const MIGRATIONS: {name: string; statements: string[]}[] = [
        ) w on true`,
     ],
   },
+  {
+    name: "011_backfill_node_tiers",
+    statements: [
+      // Nodes recorded before the payment join was fixed were filed as base at
+      // the base price, whatever was actually paid for them. The relay records
+      // a node before it marks the payment minted, so the old lookup on
+      // `mint_tx_hash` always missed. By now that column is filled in, so it is
+      // the right key for the repair even though it was the wrong one for the
+      // insert.
+      `update nodes n
+          set tier = p.tier,
+              price_wei = p.amount_wei
+         from payments p
+        where lower(p.mint_tx_hash) = lower(n.mint_tx_hash)
+          and p.tier is not null
+          and (n.tier is distinct from p.tier or n.price_wei is distinct from p.amount_wei)`,
+    ],
+  },
 ];
 
 export async function POST(req: Request): Promise<Response> {

@@ -42,6 +42,7 @@ import {
   markManualReview,
   markMintFailed,
   markMinted,
+  setPaymentTier,
   type PaymentRow,
 } from "@/lib/payments";
 import {recordMintedNodes} from "@/lib/reconcile";
@@ -54,7 +55,7 @@ import {
   type MintedLog,
 } from "@/lib/rpc";
 import {scheduleNewNode} from "@/lib/schedule";
-import {loadTiers, tierById, tierUsageFor} from "@/lib/tiers";
+import {loadTiers, tierById, tierForAmount, tierUsageFor, TIER_IDS} from "@/lib/tiers";
 
 /** Long enough for a slow block, short enough that a pass cannot hang forever. */
 const RECEIPT_TIMEOUT_MS = 90_000;
@@ -208,13 +209,26 @@ async function verifyPayment(row: PaymentRow): Promise<Verified> {
     return {ok: false, retry: false, reason: "payment was not addressed to the payments wallet"};
   }
 
-  const priceWei = nodePriceWei();
-  if (transaction.value !== priceWei) {
+  // The amount must still be exactly a price, but there is more than one price
+  // now. Checking against the single base price parked every tiered payment
+  // here, after discovery had already accepted it, which is a confusing place
+  // to be refused from: the money was taken and the payment looked fine.
+  const {tiers} = await loadTiers();
+  const tier = tierForAmount(transaction.value, tiers);
+  if (!tier) {
+    const prices = TIER_IDS.map((id) => tiers[id].priceWei.toString()).join(", ");
     return {
       ok: false,
       retry: false,
-      reason: `on-chain amount ${transaction.value.toString()} wei is not the ${priceWei.toString()} wei node price`,
+      reason: `on-chain amount ${transaction.value.toString()} wei matches no tier price (${prices})`,
     };
+  }
+  // The row's tier is what the allowance and the accrual are decided on, so a
+  // row that arrived without one, or with one that no longer matches the amount
+  // paid, is corrected here from the amount rather than trusted.
+  if (row.tier !== tier.id) {
+    await setPaymentTier(row.id, tier.id);
+    row.tier = tier.id;
   }
 
   const owner = transaction.from.toLowerCase() as `0x${string}`;

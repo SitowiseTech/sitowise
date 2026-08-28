@@ -245,7 +245,13 @@ export async function readParkedPayments(limit = 50): Promise<PaymentRow[]> {
 }
 
 /**
- * Put one payment back in front of the minting pass.
+ * Put one payment back in front of the minting pass, on a fresh decision.
+ *
+ * The verdict is recomputed rather than the old status simply flipped to
+ * `seen`, because the reason a payment was parked can stop being true. A
+ * payment of 0.1 ETH was "not the node price" until tiers existed and 0.1
+ * became the Prime price; requeuing it without re-deciding would have carried
+ * the old empty tier through and minted a base node for a Prime payment.
  *
  * Resets the attempt counter, because the budget was spent on a condition that
  * has since been fixed and leaving it at the ceiling means the row is picked up
@@ -259,12 +265,16 @@ export async function readParkedPayments(limit = 50): Promise<PaymentRow[]> {
  * Rows in `minted` are refused outright rather than silently ignored, so a
  * mistaken call is visible instead of looking like it worked.
  */
-export async function requeuePayment(txHash: string): Promise<PaymentRow | null> {
+export async function requeuePayment(
+  txHash: string,
+  decided: {status: "seen" | "manual_review"; tier: string | null; note?: string},
+): Promise<PaymentRow | null> {
   const rows = await sql<PaymentRow>`
     update payments
-       set status = 'seen',
+       set status = ${decided.status},
+           tier = ${decided.tier},
            attempts = 0,
-           last_error = null,
+           last_error = ${decided.note ?? null},
            updated_at = now()
      where lower(tx_hash) = ${txHash.toLowerCase()}
        and status in ('manual_review', 'failed')
@@ -356,4 +366,16 @@ export async function readPaymentByHash(txHash: string): Promise<PaymentRow | nu
     select * from payments where lower(tx_hash) = ${txHash.toLowerCase()}
   `;
   return rows[0] ?? null;
+}
+
+/**
+ * Correct a row's tier from the amount actually paid.
+ *
+ * Used by the relay when a payment reaches minting with no tier or a stale one:
+ * rows written before tiers existed carry none, and the tier decides both the
+ * allowance and the accrual, so minting one as base would hand out the wrong
+ * node for the money taken.
+ */
+export async function setPaymentTier(id: string, tier: string): Promise<void> {
+  await sql`update payments set tier = ${tier}, updated_at = now() where id = ${id}`;
 }

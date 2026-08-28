@@ -34,7 +34,7 @@ const CAPABILITIES: readonly Capability[] = [
   {
     index: "03",
     title: "Per-node balances",
-    body: "Every node carries its own balance. Hold one or hold twenty five and see exactly what each of them holds.",
+    body: "Every node carries its own balance. Hold one or hold fifty and see exactly what each of them holds.",
     tags: ["Per node", "Per wallet", "Transparent"],
   },
   {

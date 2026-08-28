@@ -1,7 +1,7 @@
 import {ArrowRightIcon} from "@/components/icons";
 import {Reveal} from "@/components/Reveal";
 import {Button} from "@/components/ui/Button";
-import {DEPLOY_CTA_LABEL, DEPLOY_HREF} from "@/lib/site";
+import {DEPLOY_CTA_LABEL, DEPLOY_HREF, MAX_NODES_PER_WALLET} from "@/lib/site";
 
 /**
  * Closing call to action (spec 4.7).
@@ -35,8 +35,8 @@ export function FinalCta() {
             index={2}
             className="max-w-[58ch] text-[14.5px] leading-[1.62] text-muted"
           >
-            Twenty five nodes per wallet, no lockup and no claim window. During
-            the launch period rewards are funded by Sitowise, not by trading
+            {MAX_NODES_PER_WALLET} nodes per wallet, no lockup and no claim window.
+            During the launch period rewards are funded by Sitowise, not by trading
             volume. What each node holds is readable on chain at any time.
           </Reveal>
 

@@ -30,8 +30,8 @@ The site plans a Uniswap v4 hook so that accrual eventually comes from real swap
 docs describe that design. `SitowiseHook` is written and tested in `contracts/src`, with a mined
 salt in `contracts/HOOK.md`, but **it is not deployed and no pool names it.** A v4 pool fixes its
 hook at `initialize` and can never change it, so the hook cannot be attached to pools that already
-exist. Until such a pool is created and trades, `DIST_MODE=swaps` has no source of accrual. Until then the docs say the hook is not
-deployed, and nothing claims it is producing revenue.
+exist. Until such a pool is created and trades, `DIST_MODE=swaps` has no source of accrual, the docs say
+the hook is not deployed, and nothing claims it is producing revenue.
 
 Nothing in this project states a rate, an interval, a payback period or an APR, because none of
 those can be honestly promised while the operator is the funding source. Rewards can be reduced
@@ -213,7 +213,7 @@ off the server entirely, and keep only a few days of payout runway on the distri
 - **The Uniswap v4 hook is not deployed.** The contract and its tests are in the repo, but no
   pool names it, so `DIST_MODE=swaps` has no source of accrual until one is initialised and trades.
 - **The contract is not audited.** `/docs/audits` says so.
-- Nodes are permanently non-transferable, and a wallet's 25 slots are consumed for good.
+- Nodes are permanently non-transferable, and a wallet's slots are consumed for good.
 - ETH sent to the factory address by mistake lands in `freeBalance` with no automatic refund;
   recovering it is a manual `rescue` and needs an operational procedure.
 - No end-to-end run against real money has been completed yet.

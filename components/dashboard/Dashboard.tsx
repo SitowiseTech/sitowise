@@ -42,7 +42,7 @@ import {nodeLabel} from "@/lib/format";
  * hooks in `useDashboardData` are never mounted without an address.
  *
  * There is no separate empty screen any more. A signed-in wallet holding
- * nothing gets the same furniture as a wallet holding twenty five nodes, with
+ * nothing gets the same furniture as a wallet holding fifty nodes, with
  * the contract's zeros in it: the metrics, the node list and the activity feed
  * are all rendered, and the node list says in as many words that nothing has
  * been deployed. Nothing on the page is invented to fill the space.

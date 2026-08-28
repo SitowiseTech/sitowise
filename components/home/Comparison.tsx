@@ -1,6 +1,7 @@
 import {CheckIcon} from "@/components/icons";
 import {Reveal} from "@/components/Reveal";
 import {SectionHead} from "@/components/home/SectionHead";
+import {MAX_NODES_PER_WALLET} from "@/lib/site";
 
 /**
  * The two-column comparison (spec 4.5).
@@ -17,7 +18,7 @@ const ROWS: readonly (readonly [string, string])[] = [
   ["Stake and wait out a lockup", "One payment, no lockup"],
   ["Miss a claim window, lose the payout", "Balances sit until you take them"],
   ["Trust a number on a dashboard", "Read the balance from the contract"],
-  ["One address, one position", "Up to 25 nodes per wallet"],
+  ["One address, one position", `Up to ${MAX_NODES_PER_WALLET} nodes per wallet`],
 ];
 
 export function Comparison() {

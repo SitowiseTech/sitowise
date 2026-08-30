@@ -201,6 +201,66 @@ export async function GET(req: Request): Promise<Response> {
             responses: {"200": {description: "Rounds, newest first."}},
           },
         },
+        "/api/payments/claim": {
+          post: {
+            summary: "Report a payment you just made",
+            description:
+              "Tells the server about a payment instead of waiting for discovery to find it. " +
+              "The hash is only a pointer: every fact is re-read from the chain, and the node " +
+              "is always minted to the address the ETH came from, never to the caller. " +
+              "Idempotent.",
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["txHash"],
+                    properties: {
+                      txHash: {type: "string", pattern: "^0x[0-9a-fA-F]{64}$"},
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              "200": {
+                description: "What the payment is, and the node if it has one.",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      properties: {
+                        status: {
+                          type: "string",
+                          enum: ["seen", "minting", "minted", "failed", "manual_review", "refunded"],
+                        },
+                        tier: {type: ["string", "null"]},
+                        nodeChainId: {type: ["string", "null"]},
+                        from: {type: ["string", "null"]},
+                        amountWei: {type: ["string", "null"]},
+                        reason: {
+                          type: ["string", "null"],
+                          description: "Why it is held, when it is held.",
+                        },
+                        known: {
+                          type: "boolean",
+                          description: "False when this call is what recorded it.",
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              "400": {description: "Not a transaction hash."},
+              "409": {
+                description:
+                  "Not usable as a payment yet or at all. A hash the RPC has not caught up to " +
+                  "is worth retrying; one addressed elsewhere is not.",
+              },
+            },
+          },
+        },
         "/api/price": {
           get: {
             summary: "ETH price in USD",

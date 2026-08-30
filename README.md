@@ -60,9 +60,10 @@ Payment happens **outside** the contract, which is why there are four wallets.
 1. The buyer sends a plain transfer of exactly one tier price to the **payments wallet**. They
    never call the contract, so they never pay contract gas. The amount is what selects the tier,
    so one wallet serves all three.
-2. The **watcher** (`/api/cron/payments`) reads new blocks, finds transfers to that wallet and
-   records each one in `payments` at status `seen` **before** anything is minted. A wrong amount
-   goes to `manual_review` instead, and no node is created.
+2. The payment is recorded in `payments` at status `seen` **before** anything is minted, by
+   whichever of the three routes in "How payments are found" reaches it first. An amount that
+   matches no tier price, or a gated tier the paying wallet does not qualify for, goes to
+   `manual_review` instead, and no node is created.
 3. The **relayer** calls `mintFor(to, paymentRef)` and pays that gas. `paymentRef` is the payment
    transaction hash, recorded in `paymentRefUsed`, so one payment backs exactly one node and a
    repeat reverts `RefAlreadyUsed`. A retry hitting that error is treated as success, because it
@@ -80,6 +81,9 @@ be recovered. The deploy modal warns about this before the wallet opens.
 
 ```
 app/            routes: site, /dashboard, /docs, /ledger, /admin, /api/*
+                /node/:id  one node, public, no wallet needed
+                /check     paste a payment hash, get the answer, and have it
+                           recovered if it was never recorded
 components/     site, home, dashboard, docs, ui primitives
 lib/            chain, abi, factory, rpc, onchain      contract access
                 payments, schedule, watcher, mintRelay payment pipeline
@@ -117,6 +121,35 @@ scheduler (cron-job.org has a one-minute minimum on the free tier). `worker/` ho
 standalone long-running variant of the credit tick for hosts that can run a process.
 
 ## How payments are found
+
+Three ways, deliberately, because for two days in August there was only one and it stopped.
+
+1. **The buyer's browser reports it.** The deploy flow calls `POST /api/payments/claim` with the
+   transaction hash the moment the wallet returns one. This is the fastest path and the only one
+   that depends on nothing but our own RPC. `/check` is the same call with a page around it, so
+   somebody who paid from outside the site can still hand us the hash themselves.
+2. **The scan**, described below. It is what covers transfers sent without the site.
+3. **The audit**, every fifteen minutes: re-read a recent window of the payments wallet, compare
+   against the ledger, and adopt anything the chain has that we do not. It raises the
+   `missed_payments` alert when it finds something, so a gap is never silent.
+
+Every one of them ends in the same place: the transaction is re-read from the chain and judged
+by `decide()`. A hash is only ever a pointer, so none of these paths trusts anything a caller
+says, and the node is minted to the address the ETH came from.
+
+### The outage this design came from
+
+The scan asks Blockscout's address index. In August that index started answering `403` to our
+server, the code treated a `403` as a permanent refusal rather than something to retry, and
+discovery stopped for forty hours. Payments arrived and no nodes were created.
+
+The cause was not rate limiting and not volume. The explorer has a bot filter that reads request
+headers, and server-side `fetch` sends no `User-Agent` at all. Identical request without one:
+`403`. With a browser `User-Agent`: `200`, repeatedly, on both API versions. So the client now
+sends one (`EXPLORER_USER_AGENT` overrides it), a `403` is treated as retryable, and the two
+paths above exist so that this class of failure cannot take deliveries down again.
+
+### The scan itself
 
 A buyer sends a plain ETH transfer to `PAYMENT_ADDRESS`. That emits no log, so there is no
 `eth_getLogs` filter that can find it, and the original watcher read every block and filtered

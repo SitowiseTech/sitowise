@@ -88,18 +88,34 @@ export default function TroubleshootingPage() {
         Buying a node is a plain transfer to the payments wallet, not a contract call. A watcher
         reads blocks for transfers to that wallet, and once one is recorded the relayer calls{" "}
         <code>mintFor</code> and pays the gas for it. So there is always a short gap between your
-        transfer confirming and the node existing. Work through it in this order:
+        transfer confirming and the node existing.
       </p>
+      <p>
+        <strong>
+          Start at <Link href="/check">Check a payment</Link>.
+        </strong>{" "}
+        Paste the transaction you paid with and it answers directly: the node it created, or
+        that it is queued, or that it is held and why. It needs no wallet, and if the payment
+        was never recorded on our side, checking it there records it. Everything below is for
+        working it out yourself instead.
+      </p>
+      <p>Work through it in this order:</p>
       <ol>
         <li>
           Confirm the transfer itself confirmed, rather than still being pending or having
           reverted.
         </li>
         <li>
-          Confirm the amount was exactly {NODE_PRICE_ETH} ETH. Anything under or over is recorded
-          and parked for a human rather than minted, because deciding between a refund and a
-          top-up is not something the software should guess. Send the operator the transaction
-          hash.
+          Confirm the amount was exactly one of the{" "}
+          <Link href="/docs/tiers">tier prices</Link>. Anything else is recorded and parked for
+          a human rather than minted, because deciding between a refund and a top-up is not
+          something the software should guess.
+        </li>
+        <li>
+          For a gated tier, confirm the paying wallet held the required SITOWISE at the moment
+          the payment was processed, not only when you clicked. A payment that fails that check
+          is held rather than minted, and <Link href="/check">Check a payment</Link> says so in
+          as many words.
         </li>
         <li>
           Confirm it went to the payments wallet the deploy flow showed you, and not to the factory

@@ -1,4 +1,5 @@
 import type {Metadata} from "next";
+import Link from "next/link";
 import {CodeBlock} from "@/components/docs/CodeBlock";
 import {DocCards} from "@/components/docs/DocIndex";
 import {DocPage, DocTable} from "@/components/docs/DocPage";
@@ -77,7 +78,8 @@ GET /api/node/:id?limit=50
 GET /api/distributions?limit=50
 GET /api/deploy-quote
 GET /api/price
-GET /api/openapi.json`}</CodeBlock>
+GET /api/openapi.json
+POST /api/payments/claim`}</CodeBlock>
       {API_GROUP ? <DocCards items={API_GROUP.items.slice(2, 6)} /> : null}
       <p>
         <code>/api/deploy-quote</code> answers{" "}
@@ -100,6 +102,30 @@ GET /api/openapi.json`}</CodeBlock>
         <code>POST /api/nodes/sync</code>, and are covered on{" "}
         <a href="/docs/api/authentication">Authentication</a>. Nothing in this API withdraws, and
         no endpoint here can move funds; see <a href="/docs/withdrawing">Withdrawing</a>.
+      </p>
+
+      <h2 id="claim">Reporting your own payment</h2>
+      <p>
+        <code>POST /api/payments/claim</code> with <code>{`{ "txHash": "0x…" }`}</code> tells us
+        about a payment instead of waiting for it to be discovered. The deploy flow calls it the
+        moment your wallet returns a hash, and{" "}
+        <Link href="/check">Check a payment</Link> is the same call with a page around it.
+      </p>
+      <CodeBlock label="Try it">{`curl -s https://sitowise.tech/api/payments/claim \
+  -H 'content-type: application/json' \
+  -d '{"txHash":"0x…"}'`}</CodeBlock>
+      <p>
+        The hash is only a pointer. Every fact that matters is re-read from the chain, so a hash
+        that is not a real transfer of a tier price to the payments wallet is refused, and
+        claiming a payment somebody else made achieves nothing: the node is minted to the
+        address the ETH came from, never to the caller. It is idempotent, so calling it twice is
+        the same as calling it once, and it answers <code>409</code> for a transaction the RPC
+        has not caught up to yet, which is worth retrying rather than an error to show.
+      </p>
+      <p>
+        It exists because discovery is a scan, and a scan can stop. In August ours did, for
+        forty hours, and the only reason anybody found out was that buyers wrote in with their
+        transaction hashes. This is the path that does not depend on us noticing.
       </p>
 
       <h2 id="spec">The spec</h2>

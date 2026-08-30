@@ -1240,3 +1240,119 @@ export async function readPaymentFacts(txHash: `0x${string}`): Promise<PaymentFa
     toPayments: (transaction.to?.toLowerCase() ?? null) === payTo,
   };
 }
+
+/* ----------------------------------------------------------------- audit --
+   Payments the cursor walked past.
+
+   Discovery only ever moves forward, so a pass that claimed a range the index
+   had not finished serving writes those blocks off for good. Three real
+   payments were lost that way, and all three were found the same way: the buyer
+   sent us the transaction hash and asked where their node was. Anyone who did
+   not write in would simply have paid and got nothing.
+
+   This re-reads a recent window of the payments wallet and compares it against
+   the ledger. Anything the chain has and the ledger does not is adopted, which
+   puts it through exactly the verification a discovered payment goes through,
+   and the fact that it happened is raised as an alert so it is never silent. */
+
+export type AuditResult = {
+  windowBlocks: string;
+  checked: number;
+  missing: number;
+  adopted: string[];
+  failed: {txHash: string; reason: string}[];
+};
+
+/** How far back one audit looks. About three hours of Robinhood Chain. */
+const AUDIT_WINDOW_BLOCKS = 100_000n;
+
+export async function auditPayments(opts: {windowBlocks?: bigint} = {}): Promise<AuditResult> {
+  const payTo = paymentAddress();
+  const cfg = watcherConfig();
+  const head = await rpc().getBlockNumber();
+  const safeHead = head > cfg.confirmations ? head - cfg.confirmations : 0n;
+  const window = opts.windowBlocks ?? AUDIT_WINDOW_BLOCKS;
+  const from = safeHead > window ? safeHead - window : 0n;
+
+  const walk = await walkAddressV2(payTo, from, safeHead, {
+    maxPages: cfg.explorerMaxPages,
+    timeoutMs: cfg.explorerTimeoutMs,
+  });
+
+  // Only transfers that actually carried money. A zero-value call to the wallet
+  // is not a payment anybody is waiting on a node for.
+  const candidates = walk.transfers.filter((t) => t.valueWei > 0n && t.succeeded);
+  const hashes = candidates.map((t) => t.hash.toLowerCase());
+
+  const known = new Set(
+    (
+      await sql<{tx_hash: string}>`
+        select tx_hash from payments
+         where lower(tx_hash) = any(${hashes}::text[])
+      `
+    ).map((r) => r.tx_hash.toLowerCase()),
+  );
+
+  const missing = candidates.filter((t) => !known.has(t.hash.toLowerCase()));
+
+  const adopted: string[] = [];
+  const failed: {txHash: string; reason: string}[] = [];
+  for (const transfer of missing) {
+    // Sequentially, and through adoption rather than a direct insert: the chain
+    // decides what this is, the same as it does for a discovered payment.
+    const result = await adoptPayment(transfer.hash);
+    if (result.ok) adopted.push(transfer.hash);
+    else failed.push({txHash: transfer.hash, reason: result.reason});
+  }
+
+  if (adopted.length > 0) {
+    await raiseAlert(
+      "missed_payments",
+      `${adopted.length} payment(s) were on chain but not in the ledger, and have been ` +
+        "recovered. Discovery walked past them; check the cursor history for that range.",
+      {detail: {adopted, failed}},
+    );
+  } else if (failed.length === 0) {
+    await clearAlert("missed_payments");
+  }
+
+  return {
+    windowBlocks: window.toString(),
+    checked: candidates.length,
+    missing: missing.length,
+    adopted,
+    failed,
+  };
+}
+
+/** Minutes between audits. Often enough to matter, rare enough to be free. */
+const AUDIT_EVERY_MS = 15 * 60 * 1000;
+const AUDIT_KEY = "audit.last_at";
+
+/**
+ * Run the audit if one is due.
+ *
+ * Every pass would mean an extra index request a minute to answer a question
+ * that changes on the scale of a lost payment, not of a block. The timestamp
+ * lives in `settings` rather than in memory because the pass runs on serverless
+ * instances that do not survive between calls.
+ */
+export async function maybeAuditPayments(): Promise<AuditResult | null> {
+  const now = Date.now();
+
+  const rows = await sql<{value: string}>`
+    select value from settings where key = ${AUDIT_KEY}
+  `;
+  const last = Number(rows[0]?.value ?? 0);
+  if (Number.isFinite(last) && now - last < AUDIT_EVERY_MS) return null;
+
+  // Stamped before the work, not after: an audit that throws must not leave the
+  // next pass trying again immediately and failing the same way every minute.
+  await sql`
+    insert into settings (key, value, updated_by)
+    values (${AUDIT_KEY}, ${String(now)}, 'watcher')
+    on conflict (key) do update set value = excluded.value, updated_at = now()
+  `;
+
+  return auditPayments();
+}

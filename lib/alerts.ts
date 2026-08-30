@@ -43,6 +43,12 @@ export type AlertKind =
    * because a price nobody meant would park every payment sent against it.
    */
   | "tier_config"
+  /**
+   * Payments the chain has and the ledger does not. Discovery only moves
+   * forward, so a range walked past is never revisited; this is the audit that
+   * notices, and it has already recovered what it names.
+   */
+  | "missed_payments"
   /** Anything the loop threw. */
   | "worker_error";
 

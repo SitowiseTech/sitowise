@@ -24,7 +24,7 @@ import {withAdvisoryLock} from "@/lib/db";
 import {watcherConfig} from "@/lib/env";
 import {runMintRelay, type MintRelayResult} from "@/lib/mintRelay";
 import {requeueStuckMinting} from "@/lib/payments";
-import {scanPayments, type WatcherScan} from "@/lib/watcher";
+import {maybeAuditPayments, scanPayments, type AuditResult, type WatcherScan} from "@/lib/watcher";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +64,8 @@ export type PaymentsPassResult = {
   minted?: number;
   failed?: number;
   manualReview?: number;
+  /** Present only on passes where the audit was due. */
+  audit?: {checked: number; missing: number; adopted: number};
   /** True when the watcher is level with the head and nothing is waiting to mint. */
   caughtUp?: boolean;
   /**
@@ -105,7 +107,12 @@ async function run(req: Request): Promise<Response> {
         budgetMs: Math.max(1_000, PASS_BUDGET_MS - elapsed()),
       });
 
-      return {requeued, scan, mint};
+      // Last, and only when it is due. It answers "did discovery walk past
+      // anybody's money", which is worth knowing after the pass has done its
+      // ordinary work rather than instead of it.
+      const audit = await maybeAuditPayments().catch(() => null);
+
+      return {requeued, scan, mint, audit};
     });
 
     if (!outcome.ran) {
@@ -117,7 +124,7 @@ async function run(req: Request): Promise<Response> {
       );
     }
 
-    const {requeued, scan, mint} = outcome.result;
+    const {requeued, scan, mint, audit} = outcome.result;
 
     return jsonOk<PaymentsPassResult>(
       {
@@ -129,6 +136,9 @@ async function run(req: Request): Promise<Response> {
         minted: mint.minted + mint.alreadyMinted,
         failed: mint.failed,
         manualReview: scan.manualReview + mint.manualReview,
+        ...(audit
+          ? {audit: {checked: audit.checked, missing: audit.missing, adopted: audit.adopted.length}}
+          : {}),
         caughtUp: scan.caughtUp && !mint.more,
         degraded: scan.degraded,
         degradedReason: scan.degradedReason,

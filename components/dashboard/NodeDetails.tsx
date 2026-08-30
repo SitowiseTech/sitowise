@@ -159,6 +159,25 @@ export function NodeDetails({
             <span className="text-faint">No mint transaction recorded</span>
           )}
         </Facts>
+
+        {/* The public page for this node. Its own row rather than a small icon,
+            because the useful thing about it is the link itself: it opens
+            without a wallet, so it is the one a holder can actually send to
+            somebody. */}
+        <Facts label="Public page">
+          <span className="flex min-w-0 items-center gap-1">
+            <a
+              href={`/node/${node.chainNodeId.toString()}`}
+              className="min-w-0 truncate font-mono text-[13px] text-orange hover:underline"
+            >
+              /node/{node.chainNodeId.toString()}
+            </a>
+            <CopyButton
+              value={`${typeof window === "undefined" ? "" : window.location.origin}/node/${node.chainNodeId.toString()}`}
+              label="Copy link to this node"
+            />
+          </span>
+        </Facts>
       </div>
 
       <hr className="rule" />

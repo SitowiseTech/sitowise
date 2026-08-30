@@ -45,7 +45,18 @@ export async function POST(req: Request): Promise<Response> {
     const existing = await readPaymentByHash(txHash);
     if (existing) {
       return jsonOk(
-        {status: existing.status, tier: existing.tier, known: true},
+        {
+          status: existing.status,
+          tier: existing.tier,
+          nodeChainId: existing.node_chain_id,
+          from: existing.from_address,
+          amountWei: existing.amount_wei,
+          // The parked reason, which is the whole point of showing this to a
+          // buyer: "held for review" without saying why is what sends somebody
+          // to our messages instead of to the answer.
+          reason: existing.status === "manual_review" ? existing.last_error : null,
+          known: true,
+        },
         mergeHeaders(limit.headers, PRIVATE_CACHE),
       );
     }
@@ -57,8 +68,19 @@ export async function POST(req: Request): Promise<Response> {
       return jsonError(adopted.reason, 409, limit.headers);
     }
 
+    // Just adopted, so it is queued rather than minted. Re-read so the answer
+    // carries the tier and the parked reason the decision produced.
+    const row = await readPaymentByHash(txHash);
     return jsonOk(
-      {status: adopted.status, tier: null, known: false},
+      {
+        status: row?.status ?? adopted.status,
+        tier: row?.tier ?? null,
+        nodeChainId: row?.node_chain_id ?? null,
+        from: row?.from_address ?? adopted.from,
+        amountWei: row?.amount_wei ?? adopted.amountWei,
+        reason: row?.status === "manual_review" ? row.last_error : null,
+        known: false,
+      },
       mergeHeaders(limit.headers, PRIVATE_CACHE),
     );
   } catch (err) {

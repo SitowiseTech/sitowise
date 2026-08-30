@@ -26,6 +26,7 @@ export const FOOTER_LINKS: readonly NavLink[] = [
   {href: "/docs", label: "Docs"},
   {href: "/dashboard", label: "Dashboard"},
   {href: "/ledger", label: "Ledger"},
+  {href: "/check", label: "Check a payment"},
 ];
 
 /** The deploy flow lives on the dashboard; one constant so it moves once. */

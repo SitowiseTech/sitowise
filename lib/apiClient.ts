@@ -477,3 +477,25 @@ export async function getCover(): Promise<Cover | null> {
     return null;
   }
 }
+
+/* ------------------------------------------------------------------ claim */
+
+/**
+ * Tell the server about a payment we just sent.
+ *
+ * Best effort by design. The scan and the audit both still run, so a claim that
+ * fails costs nothing and must never stop the deploy flow: the node arrives a
+ * little later instead of a little sooner. That is why this swallows its errors
+ * rather than surfacing them to somebody who has already paid and can do
+ * nothing useful with the message.
+ */
+export async function claimPayment(txHash: string): Promise<void> {
+  try {
+    await request<Json>("/api/payments/claim", {
+      method: "POST",
+      body: JSON.stringify({txHash}),
+    });
+  } catch {
+    // Deliberately silent. See above.
+  }
+}

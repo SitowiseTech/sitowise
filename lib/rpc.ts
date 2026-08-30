@@ -38,7 +38,20 @@ function build() {
     // A public RPC drops the occasional request. Two retries turn that into a
     // slow response instead of a failed mint preflight; the timeout keeps a
     // hung node from holding a serverless invocation open to its own limit.
-    transport: http(RPC_URL, {timeout: 15_000, retryCount: 2, retryDelay: 250}),
+    transport: http(RPC_URL, {
+      timeout: 15_000,
+      retryCount: 2,
+      retryDelay: 250,
+      // Coalesce concurrent calls into one JSON-RPC batch request.
+      //
+      // The block scan reads a window of blocks at once. Sent as separate HTTP
+      // requests that is a burst the public RPC rate limits immediately:
+      // measured, twenty five concurrent reads returned 429 every time, while
+      // the same twenty five calls in a single batch request went through
+      // consistently. The watcher lives or dies on this path when the address
+      // index is unavailable, so it has to be the friendly shape.
+      batch: {batchSize: 25, wait: 12},
+    }),
   });
 }
 

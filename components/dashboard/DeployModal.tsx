@@ -11,6 +11,7 @@ import {useToast} from "@/components/ui/Toast";
 import {useWallet} from "@/components/dashboard/WalletProvider";
 import {addressUrl, txUrl} from "@/lib/chain";
 import {
+  claimPayment,
   getDeployQuote,
   getMe,
   syncNode,
@@ -232,6 +233,12 @@ export function DeployModal({open, onClose, onDeployed}: DeployModalProps) {
       await waitForReceipt(txHash);
       if (run.current !== mine) return;
       setPhase("waiting");
+
+      // Tell the server the hash rather than waiting to be found. The scan is
+      // still what covers payments sent from outside the site, but for a
+      // payment made here there is no reason to depend on it: the browser has
+      // had the hash since the wallet returned it.
+      void claimPayment(txHash);
 
       const id = await awaitNode(before, mine);
       if (run.current !== mine) return;

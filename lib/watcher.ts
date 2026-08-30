@@ -644,11 +644,22 @@ async function discover(
     problem = `${problem}; ${err instanceof ExplorerError ? err.message : "explorer query failed"}`;
   }
 
-  // Both index routes are down. Read blocks, but only if the gap is small
-  // enough that reading them can actually finish.
+  // Both index routes are down. Read blocks directly.
+  //
+  // This used to refuse whenever the gap was wider than one pass could read,
+  // on the reasoning that it could not finish. That turned out to be the worst
+  // possible behaviour: when the index went down for forty hours the gap grew
+  // past the limit within minutes and the fallback then did nothing at all,
+  // every pass, while payments arrived unseen. A pass that covers part of a
+  // gap is progress; one that refuses because it cannot cover all of it is a
+  // watcher that gives up precisely when it is the only thing left working.
+  //
+  // So take a bite. The cursor still only ever advances over ground actually
+  // read, so nothing is skipped, and each pass shortens the gap.
   const span = to >= from ? to - from + 1n : 0n;
-  if (cfg.maxBlocksPerPass > 0n && span > 0n && span <= cfg.maxBlocksPerPass) {
-    const scan = await fallbackBlockScan(payTo, from, to, cfg, deadline);
+  if (cfg.maxBlocksPerPass > 0n && span > 0n) {
+    const bite = span > cfg.maxBlocksPerPass ? from + cfg.maxBlocksPerPass - 1n : to;
+    const scan = await fallbackBlockScan(payTo, from, bite, cfg, deadline);
     return {
       source: "rpc-fallback",
       candidates: scan.candidates,
@@ -657,7 +668,9 @@ async function discover(
       blockRequests: scan.requests,
       indexedHead: head,
       stop: scan.error === null ? null : "rpc-error",
-      problem: `${problem}; read ${scan.requests} block(s) directly instead`,
+      problem:
+        `${problem}; read ${scan.requests} block(s) directly instead` +
+        (bite < to ? `, ${(to - bite).toString()} still to cover` : ""),
     };
   }
 
@@ -669,10 +682,7 @@ async function discover(
     blockRequests: 0,
     indexedHead: head,
     stop: "explorer-error",
-    problem:
-      span > cfg.maxBlocksPerPass
-        ? `${problem}; the gap of ${span.toString()} blocks is too wide to read block by block`
-        : problem,
+    problem,
   };
 }
 

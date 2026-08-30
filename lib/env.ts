@@ -378,8 +378,15 @@ export const WATCHER_DEFAULTS = {
   maxCatchupBlocks: 10_000n,
   // ~40 seconds of chain. The fallback is for an explorer blip during a quiet
   // minute; anything bigger waits for the explorer rather than pretending.
-  maxBlocksPerPass: 200n,
-  batchSize: 8,
+  // Raised from 200 now that block reads go out as one batched request rather
+  // than as a burst of separate ones. Two hundred was a number chosen when
+  // reading was slow enough that a wider gap could not be finished; the point
+  // of it was never to keep the gap small, it was to avoid starting work that
+  // could not complete inside the pass.
+  maxBlocksPerPass: 5_000n,
+  // One JSON-RPC batch. Measured against the public RPC: twenty five is
+  // comfortably inside its limit, fifty and a hundred are not.
+  batchSize: 25,
   confirmations: 2n,
   budgetMs: 20_000,
   mintBatch: 5,

@@ -71,18 +71,22 @@ export async function POST(req: Request): Promise<Response> {
   try {
     requireAdmin(req);
     const body = await readJsonBody(req);
+
+    // The audit is about the whole wallet, not one payment, so it is answered
+    // before the hash is required. It used to sit below that check, where it
+    // could never be reached.
+    if (body.action === "audit") {
+      const windowBlocks =
+        typeof body.windowBlocks === "string" && /^\d+$/.test(body.windowBlocks)
+          ? BigInt(body.windowBlocks)
+          : undefined;
+      const result = await auditPayments({windowBlocks});
+      return jsonOk(result, mergeHeaders(limit.headers, PRIVATE_CACHE));
+    }
+
     const txHash = typeof body.txHash === "string" ? body.txHash.trim() : "";
     if (!/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
       return jsonError("Pass the payment transaction hash.", 400, limit.headers);
-    }
-
-    // action: "audit" re-reads a recent window of the payments wallet and
-    // recovers anything the chain has that the ledger does not. The scheduled
-    // pass runs the same check every fifteen minutes; this is the button for
-    // when somebody is on the phone about it right now.
-    if (body.action === "audit") {
-      const result = await auditPayments();
-      return jsonOk(result, mergeHeaders(limit.headers, PRIVATE_CACHE));
     }
 
     // action: "refund" records money that was received and paid back. It is

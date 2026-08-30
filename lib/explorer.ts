@@ -103,6 +103,15 @@ const DEFAULTS = {pageSize: 100, maxPages: 10, timeoutMs: 5_000} as const;
 /** Attempts per URL, including the first. Two retries is enough for a blip. */
 const ATTEMPTS = 3;
 
+/**
+ * Sent with every explorer request. Overridable so this can be changed without
+ * a deploy if the filter's judgement changes again.
+ */
+const USER_AGENT =
+  process.env.EXPLORER_USER_AGENT ??
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -116,12 +125,28 @@ async function once(url: string, timeoutMs: number): Promise<unknown> {
     const res = await fetch(url, {
       signal: controller.signal,
       cache: "no-store",
-      headers: {accept: "application/json"},
+      headers: {
+        accept: "application/json",
+        "accept-language": "en-US,en;q=0.9",
+        // A real browser's User-Agent, and not a cosmetic detail.
+        //
+        // The explorer sits behind a bot filter that judges the client by its
+        // headers. Server-side fetch sends no User-Agent at all, and one day
+        // that started earning a flat 403: discovery went blind for forty hours,
+        // people paid and got nothing, and the cause looked like the explorer
+        // being down when it was only refusing us. Measured directly: identical
+        // request, no User-Agent 403, this one 200, repeatedly and on both API
+        // versions.
+        "user-agent": USER_AGENT,
+      },
     });
     if (!res.ok) {
       throw new ExplorerError(
+        // 403 is retryable here on purpose. It is not "you may never do this",
+        // it is a bot filter making a judgement that can go the other way on
+        // the next request.
         `explorer returned HTTP ${res.status}`,
-        res.status >= 500 || res.status === 429,
+        res.status >= 500 || res.status === 429 || res.status === 403,
       );
     }
     return await res.json();

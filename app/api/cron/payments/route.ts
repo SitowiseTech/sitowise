@@ -25,6 +25,7 @@ import {watcherConfig} from "@/lib/env";
 import {runMintRelay, type MintRelayResult} from "@/lib/mintRelay";
 import {requeueStuckMinting} from "@/lib/payments";
 import {maybeAuditPayments, scanPayments, type AuditResult, type WatcherScan} from "@/lib/watcher";
+import {indexWithdrawals} from "@/lib/withdrawals";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,8 @@ export type PaymentsPassResult = {
   manualReview?: number;
   /** Present only on passes where the audit was due. */
   audit?: {checked: number; missing: number; adopted: number};
+  /** Withdrawn events read from the chain this pass. */
+  withdrawals?: {found: number; inserted: number; caughtUp: boolean};
   /** True when the watcher is level with the head and nothing is waiting to mint. */
   caughtUp?: boolean;
   /**
@@ -112,7 +115,13 @@ async function run(req: Request): Promise<Response> {
       // ordinary work rather than instead of it.
       const audit = await maybeAuditPayments().catch(() => null);
 
-      return {requeued, scan, mint, audit};
+      // Withdrawals are logs, so one filtered call covers any range and this
+      // costs almost nothing next to the rest of the pass. It is here rather
+      // than on its own timer because it has no reason to run at a different
+      // rate from everything else that keeps the ledger honest.
+      const withdrawals = await indexWithdrawals().catch(() => null);
+
+      return {requeued, scan, mint, audit, withdrawals};
     });
 
     if (!outcome.ran) {
@@ -124,7 +133,7 @@ async function run(req: Request): Promise<Response> {
       );
     }
 
-    const {requeued, scan, mint, audit} = outcome.result;
+    const {requeued, scan, mint, audit, withdrawals} = outcome.result;
 
     return jsonOk<PaymentsPassResult>(
       {
@@ -138,6 +147,15 @@ async function run(req: Request): Promise<Response> {
         manualReview: scan.manualReview + mint.manualReview,
         ...(audit
           ? {audit: {checked: audit.checked, missing: audit.missing, adopted: audit.adopted.length}}
+          : {}),
+        ...(withdrawals
+          ? {
+              withdrawals: {
+                found: withdrawals.found,
+                inserted: withdrawals.inserted,
+                caughtUp: withdrawals.caughtUp,
+              },
+            }
           : {}),
         caughtUp: scan.caughtUp && !mint.more,
         degraded: scan.degraded,

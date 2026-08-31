@@ -29,6 +29,7 @@ import {
   requeuePayment,
 } from "@/lib/payments";
 import {adoptPayment, auditPayments, decide, readPaymentFacts} from "@/lib/watcher";
+import {indexWithdrawals} from "@/lib/withdrawals";
 import {loadTiers} from "@/lib/tiers";
 import {paymentAddress} from "@/lib/env";
 
@@ -75,6 +76,14 @@ export async function POST(req: Request): Promise<Response> {
     // The audit is about the whole wallet, not one payment, so it is answered
     // before the hash is required. It used to sit below that check, where it
     // could never be reached.
+    // action: "withdrawals" runs the withdrawal indexer now instead of waiting
+    // for a pass. Backfilling the whole history is several passes at two
+    // million blocks each, and this is how to get through them.
+    if (body.action === "withdrawals") {
+      const result = await indexWithdrawals();
+      return jsonOk(result, mergeHeaders(limit.headers, PRIVATE_CACHE));
+    }
+
     if (body.action === "audit") {
       const windowBlocks =
         typeof body.windowBlocks === "string" && /^\d+$/.test(body.windowBlocks)

@@ -65,6 +65,17 @@ const MIGRATIONS: {name: string; statements: string[]}[] = [
           and (n.tier is distinct from p.tier or n.price_wei is distinct from p.amount_wei)`,
     ],
   },
+  {
+    name: "012_withdrawal_uniqueness",
+    statements: [
+      // withdrawAll emits one event per node, so one transaction hash appears
+      // once per node. Unique on the hash alone would have taken the first
+      // event of a sweep and dropped the rest.
+      `alter table withdrawals drop constraint if exists withdrawals_tx_hash_key`,
+      `create unique index if not exists withdrawals_tx_node_idx
+         on withdrawals (tx_hash, node_chain_id)`,
+    ],
+  },
 ];
 
 export async function POST(req: Request): Promise<Response> {

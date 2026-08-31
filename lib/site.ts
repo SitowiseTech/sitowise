@@ -25,6 +25,7 @@ export const NAV_LINKS: readonly NavLink[] = [
 export const FOOTER_LINKS: readonly NavLink[] = [
   {href: "/docs", label: "Docs"},
   {href: "/dashboard", label: "Dashboard"},
+  {href: "/nodes", label: "All nodes"},
   {href: "/ledger", label: "Ledger"},
   {href: "/check", label: "Check a payment"},
 ];

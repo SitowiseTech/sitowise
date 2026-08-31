@@ -6,7 +6,8 @@ import {CopyButton} from "@/components/ui/CopyButton";
 import {addressUrl, txUrl} from "@/lib/chain";
 import {sql} from "@/lib/db";
 import {formatDate, formatEth, formatEthLabel, nodeLabel, shortAddress, timeAgo} from "@/lib/format";
-import {nodeByChainId, shapeNodeDetail} from "@/lib/nodes";
+import {nodeByChainId, paymentForNode, shapeNodeDetail} from "@/lib/nodes";
+import {nodeInfo} from "@/lib/rpc";
 import {TIER_LABEL} from "@/lib/tierLabels";
 import {FUNDING_NOTE, SITE} from "@/lib/site";
 
@@ -48,7 +49,8 @@ export async function generateMetadata({params}: Params): Promise<Metadata> {
 
   const node = shapeNodeDetail(row);
   const label = `Node ${nodeLabel(node.chainNodeId)}`;
-  const held = formatEthLabel(BigInt(node.balanceWei));
+  const chain = await nodeInfo(BigInt(node.chainNodeId)).catch(() => null);
+  const held = formatEthLabel(chain?.balanceWei ?? BigInt(node.balanceWei));
 
   return {
     title: label,
@@ -107,6 +109,22 @@ export default async function NodePage({params}: Params) {
   ]);
 
   const tier = TIER_LABEL[node.tier ?? "base"] ?? "Base";
+  // The transfer that bought this node. The contract stores it as paymentRef,
+  // which is what ties a node back to the money, and it was the one link in
+  // that chain the page never showed.
+  const paymentTx = node.mintTx ? await paymentForNode(node.mintTx).catch(() => null) : null;
+
+  // Money from the contract, never from the ledger.
+  //
+  // node_view derives a balance as credited minus withdrawn, and withdrawals
+  // are not indexed, so every figure it produced for a node whose owner had
+  // taken money out was wrong and wrong in the flattering direction. The
+  // contract knows all three numbers itself. This is also what the project
+  // claims everywhere else, so the page had no business deriving them.
+  const chain = await nodeInfo(BigInt(chainId)).catch(() => null);
+  const balanceWei = chain?.balanceWei ?? BigInt(node.balanceWei);
+  const creditedWei = chain?.totalReceivedWei ?? BigInt(node.cumulativeWei);
+  const withdrawnWei = chain?.totalWithdrawnWei ?? BigInt(node.withdrawnWei);
 
   return (
     <main className="shell flex flex-col gap-6 py-12 sm:py-16">
@@ -135,17 +153,17 @@ export default async function NodePage({params}: Params) {
         <div className="grid gap-6 sm:grid-cols-3">
           <Figure label="Balance now">
             <span className="tabular text-[26px] leading-[1.1] font-medium tracking-[-0.02em]">
-              {formatEth(BigInt(node.balanceWei), 8)} ETH
+              {formatEth(balanceWei, 8)} ETH
             </span>
           </Figure>
           <Figure label="Credited all time">
             <span className="tabular text-[19px]">
-              {formatEth(BigInt(node.cumulativeWei), 8)} ETH
+              {formatEth(creditedWei, 8)} ETH
             </span>
           </Figure>
           <Figure label="Withdrawn all time">
             <span className="tabular text-[19px]">
-              {formatEth(BigInt(node.withdrawnWei), 8)} ETH
+              {formatEth(withdrawnWei, 8)} ETH
             </span>
           </Figure>
         </div>
@@ -187,6 +205,20 @@ export default async function NodePage({params}: Params) {
             <span className="tabular text-[14px] text-muted">
               {formatEth(BigInt(node.priceWei), 6)} ETH
             </span>
+          </Figure>
+          <Figure label="Paid by">
+            {paymentTx ? (
+              <a
+                href={txUrl(paymentTx)}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="font-mono text-[13.5px] text-ink transition-colors hover:text-orange"
+              >
+                {shortAddress(paymentTx)}
+              </a>
+            ) : (
+              <span className="text-[14px] text-faint">Not recorded</span>
+            )}
           </Figure>
           <Figure label="Minted by">
             {node.mintTx ? (

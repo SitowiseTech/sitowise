@@ -106,3 +106,64 @@ export async function nodeByEitherId(value: bigint): Promise<NodeViewRow | null>
   }
   return nodeByChainId(value);
 }
+
+/**
+ * The registry: every node, newest first.
+ *
+ * The dashboard shows a holder their own nodes and the node page shows one. The
+ * whole set was only ever visible by walking ids by hand on the explorer, which
+ * is a strange gap for a product whose entire claim is that all of it is
+ * readable.
+ */
+export function recentNodes(limit = 100, offset = 0): Promise<NodeViewRow[]> {
+  return sql<NodeViewRow>`
+    select * from node_view
+     where status = 'active'
+     order by chain_node_id desc
+     limit ${limit}::int offset ${offset}::int
+  `;
+}
+
+/** Count and totals for the registry header, computed by the database. */
+export async function registryTotals(): Promise<{
+  nodes: number;
+  balanceWei: string;
+  cumulativeWei: string;
+  withdrawnWei: string;
+  owners: number;
+}> {
+  const rows = await sql<{
+    nodes: string;
+    balance_wei: string;
+    cumulative_wei: string;
+    withdrawn_wei: string;
+    owners: string;
+  }>`
+    select
+      count(*)::text                              as nodes,
+      count(distinct owner_address)::text         as owners,
+      coalesce(sum(balance_wei), 0)::text         as balance_wei,
+      coalesce(sum(cumulative_wei), 0)::text      as cumulative_wei,
+      coalesce(sum(withdrawn_wei), 0)::text       as withdrawn_wei
+    from node_view
+    where status = 'active'
+  `;
+  const row = rows[0];
+  return {
+    nodes: Number(row?.nodes ?? 0),
+    owners: Number(row?.owners ?? 0),
+    balanceWei: row?.balance_wei ?? "0",
+    cumulativeWei: row?.cumulative_wei ?? "0",
+    withdrawnWei: row?.withdrawn_wei ?? "0",
+  };
+}
+
+/** The payment transaction a node was bought with, from the ledger. */
+export async function paymentForNode(mintTxHash: string): Promise<string | null> {
+  const rows = await sql<{tx_hash: string}>`
+    select tx_hash from payments
+     where lower(mint_tx_hash) = ${mintTxHash.toLowerCase()}
+     limit 1
+  `;
+  return rows[0]?.tx_hash ?? null;
+}

@@ -7,6 +7,7 @@ import {CopyButton} from "@/components/ui/CopyButton";
 import {addressUrl} from "@/lib/chain";
 import {formatDate, formatEth, formatEthLabel, nodeLabel, shortAddress} from "@/lib/format";
 import {nodesForOwner, shapeNode} from "@/lib/nodes";
+import {nodeInfo} from "@/lib/rpc";
 import {TIER_LABEL} from "@/lib/tierLabels";
 import {FUNDING_NOTE, SITE} from "@/lib/site";
 
@@ -57,7 +58,25 @@ export default async function HolderPage({params}: Params) {
   if (!isAddress(address)) notFound();
 
   const rows = await nodesForOwner(address).catch(() => []);
-  const nodes = rows.map(shapeNode);
+  const ledger = rows.map(shapeNode);
+
+  // Money from the contract, never from the ledger. node_view derives a balance
+  // as credited minus withdrawn, and withdrawals are not indexed, so anyone who
+  // had taken money out was shown a balance that was still sitting there. The
+  // reads go out as one batched request, so this is one round trip, not one per
+  // node.
+  const chain = await Promise.all(
+    ledger.map((n) =>
+      nodeInfo(BigInt(n.chainNodeId)).catch(() => null),
+    ),
+  );
+
+  const nodes = ledger.map((n, i) => ({
+    ...n,
+    balanceWei: (chain[i]?.balanceWei ?? BigInt(n.balanceWei)).toString(),
+    cumulativeWei: (chain[i]?.totalReceivedWei ?? BigInt(n.cumulativeWei)).toString(),
+    withdrawnWei: (chain[i]?.totalWithdrawnWei ?? BigInt(n.withdrawnWei)).toString(),
+  }));
 
   const total = (pick: (n: (typeof nodes)[number]) => string) =>
     nodes.reduce((sum, n) => sum + BigInt(pick(n)), 0n);

@@ -164,7 +164,16 @@ function Answer({result}: {result: Result}) {
           <div className="flex flex-col gap-1.5">
             <dt className="mono-label">Paid from</dt>
             <dd className="font-mono text-[13px] text-muted">
-              {result.from ? shortAddress(result.from) : "Unknown"}
+              {result.from ? (
+                <Link
+                  href={`/holder/${result.from}`}
+                  className="text-ink transition-colors hover:text-orange"
+                >
+                  {shortAddress(result.from)}
+                </Link>
+              ) : (
+                "Unknown"
+              )}
             </dd>
           </div>
           <div className="flex flex-col gap-1.5">

@@ -155,16 +155,24 @@ export default async function NodePage({params}: Params) {
         <div className="grid gap-6 sm:grid-cols-2">
           <Figure label="Owner">
             {node.owner ? (
-              <span className="flex min-w-0 items-center gap-2">
+              <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                {/* To the holder page first, the explorer second: the question
+                    somebody clicking an owner has is what else they hold. */}
+                <Link
+                  href={`/holder/${node.owner}`}
+                  className="font-mono text-[13.5px] text-ink transition-colors hover:text-orange"
+                >
+                  {shortAddress(node.owner)}
+                </Link>
+                <CopyButton value={node.owner} label="Copy owner address" />
                 <a
                   href={addressUrl(node.owner)}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="font-mono text-[13.5px] text-ink transition-colors hover:text-orange"
+                  className="mono-label transition-colors hover:text-orange"
                 >
-                  {shortAddress(node.owner)}
+                  Blockscout
                 </a>
-                <CopyButton value={node.owner} label="Copy owner address" />
               </span>
             ) : (
               <span className="text-[14px] text-faint">Not recorded</span>
